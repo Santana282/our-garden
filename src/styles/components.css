@@ -143,6 +143,7 @@
     font-size: clamp(1.85rem, 6vw, 2.4rem);
     font-weight: 900;
     background: linear-gradient(90deg, #fb7185 0%, #fbbf24 55%, #fde68a 100%);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 6px;
