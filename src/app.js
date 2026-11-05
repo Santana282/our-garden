@@ -1,50 +1,21 @@
-// Componentes principales de interfaz y Fase 4 completa
 import './components/layout/app-header.js';
 import './components/layout/bottom-nav.js';
 import './views/home-view.js';
 import './views/garden-view.js';
 import './views/days-view.js';
 import './views/diary-view.js';
+import './views/arcade-view.js';
+import './views/star-os-view.js';
 import './views/botiquin-view.js';
 import './views/agreements-view.js';
+import { syncEngine } from './core/sync.js';
 
-// Carga segura de Arcade (Fase 5) y Star-OS (Fase 6)
-async function loadRemainingModules() {
-    try {
-        await import('./views/arcade-view.js');
-    } catch (e) {
-        if (!customElements.get('arcade-view')) {
-            customElements.define('arcade-view', class extends HTMLElement {
-                connectedCallback() {
-                    this.innerHTML = `
-                        <div class="stage-card" style="text-align:center;margin-top:20px;">
-                            <div style="font-size:3rem;margin-bottom:10px;">👾</div>
-                            <h2 style="color:var(--accent-sunflower);margin-bottom:8px;">Arcade Retro • Kevin & Analy</h2>
-                            <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">Siguiente paso (Fase 5): Pac-Man Gastronómico, Ping Pong y Tetris táctil.</p>
-                            <a href="#/" class="pill-action-btn" style="text-decoration:none;">⬅️ Volver al Inicio</a>
-                        </div>
-                    `;
-                }
-            });
-        }
-    }
-
-    if (!customElements.get('star-os-view')) {
-        customElements.define('star-os-view', class extends HTMLElement {
-            connectedCallback() {
-                this.innerHTML = `
-                    <div class="stage-card" style="text-align:center;margin-top:24px;">
-                        <div style="font-size:3rem;margin-bottom:10px;">💻</div>
-                        <h2 style="color:var(--accent-sunflower);margin-bottom:6px;">Star-OS • Configuración</h2>
-                        <p style="color:var(--accent-sky);font-size:0.85rem;font-weight:700;margin-bottom:12px;">Perfiles, Sensores y Sincronización en la Nube</p>
-                        <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:18px;">Módulo preparado para Fase 6: Autenticación de Kevin y Analy, conexión con Supabase y exportación de respaldos.</p>
-                        <a href="#/" class="pill-action-btn" style="text-decoration:none;display:inline-flex;">⬅️ Volver al Ecosistema</a>
-                    </div>
-                `;
-            }
-        });
-    }
-}
+// Capturar evento nativo de instalación PWA en móviles
+window.deferredPwaPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.deferredPwaPrompt = e;
+});
 
 class SafeRouter {
     constructor(routes, rootId) {
@@ -65,6 +36,7 @@ class SafeRouter {
 function initTouchEmojiSparkles() {
     const emojis = ['🌻', '✨', '💖', '🍷', '🌙', '👩🏻‍🍳', '💻'];
     window.addEventListener('pointerdown', (e) => {
+        if (localStorage.getItem('our_garden_sparkles') === 'false') return;
         const span = document.createElement('span');
         span.className = 'touch-emoji';
         span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
@@ -89,6 +61,11 @@ function initPhoenixCosmosEngine() {
     let targetOffsetY = 0;
     let currentOffsetX = 0;
     let currentOffsetY = 0;
+    let currentTheme = localStorage.getItem('our_garden_visual_theme') || 'phoenix';
+
+    window.addEventListener('ecosystem:theme-change', (e) => {
+        currentTheme = e.detail.theme || 'phoenix';
+    });
 
     const stars = Array.from({ length: 140 }, () => ({
         x: Math.random() * width,
@@ -167,10 +144,22 @@ function initPhoenixCosmosEngine() {
             const innerRadius = outerRadius * 0.54;
 
             const glow = ctx.createRadialGradient(cx, cy, innerRadius * 0.8, cx, cy, outerRadius * 1.35);
-            glow.addColorStop(0, 'rgba(244, 114, 182, 0.95)');
-            glow.addColorStop(0.55, 'rgba(244, 114, 182, 0.85)');
-            glow.addColorStop(0.8, 'rgba(251, 113, 133, 0.25)');
-            glow.addColorStop(1, 'rgba(4, 6, 14, 0)');
+            if (currentTheme === 'enologia') {
+                glow.addColorStop(0, 'rgba(192, 132, 252, 0.95)');
+                glow.addColorStop(0.55, 'rgba(56, 189, 248, 0.85)');
+                glow.addColorStop(0.8, 'rgba(129, 140, 248, 0.25)');
+                glow.addColorStop(1, 'rgba(4, 6, 14, 0)');
+            } else if (currentTheme === 'alba') {
+                glow.addColorStop(0, 'rgba(251, 191, 36, 0.95)');
+                glow.addColorStop(0.55, 'rgba(245, 158, 11, 0.85)');
+                glow.addColorStop(0.8, 'rgba(52, 211, 153, 0.25)');
+                glow.addColorStop(1, 'rgba(4, 6, 14, 0)');
+            } else {
+                glow.addColorStop(0, 'rgba(244, 114, 182, 0.95)');
+                glow.addColorStop(0.55, 'rgba(244, 114, 182, 0.85)');
+                glow.addColorStop(0.8, 'rgba(251, 113, 133, 0.25)');
+                glow.addColorStop(1, 'rgba(4, 6, 14, 0)');
+            }
 
             ctx.fillStyle = glow;
             ctx.beginPath();
@@ -240,8 +229,8 @@ function initYouTubeAudioEngine() {
     });
 }
 
-async function bootEcosystem() {
-    await loadRemainingModules();
+function bootEcosystem() {
+    syncEngine.init();
 
     const routes = {
         '#/': 'home-view',
