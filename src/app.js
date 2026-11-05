@@ -1,26 +1,15 @@
-// Importamos los componentes principales de interfaz
+// Componentes principales de interfaz y Fase 4 completa
 import './components/layout/app-header.js';
 import './components/layout/bottom-nav.js';
 import './views/home-view.js';
+import './views/garden-view.js';
+import './views/days-view.js';
+import './views/diary-view.js';
+import './views/botiquin-view.js';
+import './views/agreements-view.js';
 
-/* =========================================================================
-   CARGA DINÁMICA SEGURA DE VISTAS (ANTI-PANTALLA NEGRA)
-   Si garden-view.js o arcade-view.js aún no están en el nuevo repo our-garden,
-   no rompen la app y se activan sus respaldos integrados.
-   ========================================================================= */
-async function loadOptionalViews() {
-    try {
-        await import('./views/garden-view.js');
-    } catch (e) {
-        if (!customElements.get('garden-view')) {
-            customElements.define('garden-view', class extends HTMLElement {
-                connectedCallback() {
-                    this.innerHTML = `<home-view></home-view>`;
-                }
-            });
-        }
-    }
-
+// Carga segura de Arcade (Fase 5) y Star-OS (Fase 6)
+async function loadRemainingModules() {
     try {
         await import('./views/arcade-view.js');
     } catch (e) {
@@ -31,7 +20,7 @@ async function loadOptionalViews() {
                         <div class="stage-card" style="text-align:center;margin-top:20px;">
                             <div style="font-size:3rem;margin-bottom:10px;">👾</div>
                             <h2 style="color:var(--accent-sunflower);margin-bottom:8px;">Arcade Retro • Kevin & Analy</h2>
-                            <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">Nuestro espacio para distraernos con Pac-Man Gastronómico, Ping Pong y Tetris.</p>
+                            <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">Siguiente paso (Fase 5): Pac-Man Gastronómico, Ping Pong y Tetris táctil.</p>
                             <a href="#/" class="pill-action-btn" style="text-decoration:none;">⬅️ Volver al Inicio</a>
                         </div>
                     `;
@@ -39,64 +28,24 @@ async function loadOptionalViews() {
             });
         }
     }
-}
 
-/* =========================================================================
-   REGISTRO DE SECCIONES DEL ECOSISTEMA (7 PESTAÑAS FUNCIONALES)
-   ========================================================================= */
-class SectionPlaceholder extends HTMLElement {
-    renderSection(icon, title, subtitle, desc) {
-        this.innerHTML = `
-            <div class="stage-card" style="text-align:center;margin-top:24px;">
-                <div style="font-size:3rem;margin-bottom:10px;">${icon}</div>
-                <h2 style="color:var(--accent-sunflower);margin-bottom:6px;">${title}</h2>
-                <p style="color:var(--accent-sky);font-size:0.85rem;font-weight:700;margin-bottom:12px;">${subtitle}</p>
-                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:18px;">${desc}</p>
-                <a href="#/" class="pill-action-btn" style="text-decoration:none;display:inline-flex;">⬅️ Volver al Ecosistema</a>
-            </div>
-        `;
+    if (!customElements.get('star-os-view')) {
+        customElements.define('star-os-view', class extends HTMLElement {
+            connectedCallback() {
+                this.innerHTML = `
+                    <div class="stage-card" style="text-align:center;margin-top:24px;">
+                        <div style="font-size:3rem;margin-bottom:10px;">💻</div>
+                        <h2 style="color:var(--accent-sunflower);margin-bottom:6px;">Star-OS • Configuración</h2>
+                        <p style="color:var(--accent-sky);font-size:0.85rem;font-weight:700;margin-bottom:12px;">Perfiles, Sensores y Sincronización en la Nube</p>
+                        <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:18px;">Módulo preparado para Fase 6: Autenticación de Kevin y Analy, conexión con Supabase y exportación de respaldos.</p>
+                        <a href="#/" class="pill-action-btn" style="text-decoration:none;display:inline-flex;">⬅️ Volver al Ecosistema</a>
+                    </div>
+                `;
+            }
+        });
     }
 }
 
-if (!customElements.get('days-view')) {
-    customElements.define('days-view', class extends SectionPlaceholder {
-        connectedCallback() {
-            this.renderSection('🌙', 'Tus Días • Calendario Lunar', 'Privacidad y Cuidado Biológico', 'Seguimiento del ciclo controlado por Analy y recordatorios de apapacho.');
-        }
-    });
-}
-if (!customElements.get('diary-view')) {
-    customElements.define('diary-view', class extends SectionPlaceholder {
-        connectedCallback() {
-            this.renderSection('📖', 'Nuestros Diarios', 'Mi Diario • Su Diario • Nuestro Diario', 'Historias personales y recuerdos compartidos sincronizados.');
-        }
-    });
-}
-if (!customElements.get('star-os-view')) {
-    customElements.define('star-os-view', class extends SectionPlaceholder {
-        connectedCallback() {
-            this.renderSection('💻', 'Star-OS • Configuración', 'Perfiles, Sensores y Sincronización', 'Control de cuentas (Kevin y Analy), permisos de giroscopio y respaldos.');
-        }
-    });
-}
-if (!customElements.get('botiquin-view')) {
-    customElements.define('botiquin-view', class extends SectionPlaceholder {
-        connectedCallback() {
-            this.renderSection('🛠️', 'Botiquín Emocional', 'Protocolos de Apoyo y Calma', 'Mensajes de contención y señal 🌻 para pausar discusiones lógicas.');
-        }
-    });
-}
-if (!customElements.get('agreements-view')) {
-    customElements.define('agreements-view', class extends SectionPlaceholder {
-        connectedCallback() {
-            this.renderSection('🤝', 'Invernadero de Acuerdos', 'Compromisos Explícitos en Pareja', 'Seguimiento bilateral de acuerdos sin presión emocional.');
-        }
-    });
-}
-
-/* =========================================================================
-   ENRUTADOR INTEGRADO A PRUEBA DE FALLOS
-   ========================================================================= */
 class SafeRouter {
     constructor(routes, rootId) {
         this.routes = routes;
@@ -113,11 +62,8 @@ class SafeRouter {
     }
 }
 
-/* =========================================================================
-   CHISPA DE EMOJIS AL TOCAR (EL DETALLE FAVORITO DE ANALY)
-   ========================================================================= */
 function initTouchEmojiSparkles() {
-    const emojis = ['🌻', '✨', '💖', '🍓', '🌙', '👩🏻‍🍳', '💻'];
+    const emojis = ['🌻', '✨', '💖', '🍷', '🌙', '👩🏻‍🍳', '💻'];
     window.addEventListener('pointerdown', (e) => {
         const span = document.createElement('span');
         span.className = 'touch-emoji';
@@ -129,9 +75,6 @@ function initTouchEmojiSparkles() {
     }, { passive: true });
 }
 
-/* =========================================================================
-   MOTOR ESPACIAL PHOENIX-A + GIROSCOPIO CONTROLADO
-   ========================================================================= */
 function initPhoenixCosmosEngine() {
     const canvas = document.getElementById('phoenix-cosmos-canvas');
     if (!canvas) return;
@@ -247,9 +190,6 @@ function initPhoenixCosmosEngine() {
     renderFrame();
 }
 
-/* =========================================================================
-   REPRODUCTOR OFICIAL YOUTUBE (https://youtu.be/PEM0Vs8jf1w)
-   ========================================================================= */
 function initYouTubeAudioEngine() {
     let ytPlayer = null;
     let isReady = false;
@@ -300,11 +240,8 @@ function initYouTubeAudioEngine() {
     });
 }
 
-/* =========================================================================
-   ARRANQUE INMEDIATO DEL ECOSISTEMA
-   ========================================================================= */
 async function bootEcosystem() {
-    await loadOptionalViews();
+    await loadRemainingModules();
 
     const routes = {
         '#/': 'home-view',
@@ -326,7 +263,7 @@ async function bootEcosystem() {
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('[Our-Garden] SW activo en:', reg.scope))
+            .then(reg => console.log('[Our-Garden] SW activo:', reg.scope))
             .catch(err => console.warn('[Our-Garden] SW omitido:', err));
     }
 }
