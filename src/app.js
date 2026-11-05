@@ -1,16 +1,49 @@
-import { CONFIG } from './core/config.js';
-import { StorageService } from './core/storage.js';
-import { Store } from './core/store.js';
-import { Router } from './core/router.js';
-
-// Componentes de Layout y Vistas Actuales
+// Importamos los componentes principales de interfaz
 import './components/layout/app-header.js';
 import './components/layout/bottom-nav.js';
 import './views/home-view.js';
-import './views/garden-view.js';
-import './views/arcade-view.js';
 
-// Vistas modulares de las 7 secciones (Placeholders funcionales para Fases 4-6)
+/* =========================================================================
+   CARGA DINÁMICA SEGURA DE VISTAS (ANTI-PANTALLA NEGRA)
+   Si garden-view.js o arcade-view.js aún no están en el nuevo repo our-garden,
+   no rompen la app y se activan sus respaldos integrados.
+   ========================================================================= */
+async function loadOptionalViews() {
+    try {
+        await import('./views/garden-view.js');
+    } catch (e) {
+        if (!customElements.get('garden-view')) {
+            customElements.define('garden-view', class extends HTMLElement {
+                connectedCallback() {
+                    this.innerHTML = `<home-view></home-view>`;
+                }
+            });
+        }
+    }
+
+    try {
+        await import('./views/arcade-view.js');
+    } catch (e) {
+        if (!customElements.get('arcade-view')) {
+            customElements.define('arcade-view', class extends HTMLElement {
+                connectedCallback() {
+                    this.innerHTML = `
+                        <div class="stage-card" style="text-align:center;margin-top:20px;">
+                            <div style="font-size:3rem;margin-bottom:10px;">👾</div>
+                            <h2 style="color:var(--accent-sunflower);margin-bottom:8px;">Arcade Retro • Kevin & Analy</h2>
+                            <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">Nuestro espacio para distraernos con Pac-Man Gastronómico, Ping Pong y Tetris.</p>
+                            <a href="#/" class="pill-action-btn" style="text-decoration:none;">⬅️ Volver al Inicio</a>
+                        </div>
+                    `;
+                }
+            });
+        }
+    }
+}
+
+/* =========================================================================
+   REGISTRO DE SECCIONES DEL ECOSISTEMA (7 PESTAÑAS FUNCIONALES)
+   ========================================================================= */
 class SectionPlaceholder extends HTMLElement {
     renderSection(icon, title, subtitle, desc) {
         this.innerHTML = `
@@ -25,31 +58,76 @@ class SectionPlaceholder extends HTMLElement {
     }
 }
 
-customElements.define('days-view', class extends SectionPlaceholder {
-    connectedCallback() {
-        this.renderSection('🌙', 'Tus Días • Calendario Lunar', 'Privacidad y Cuidado Biológico', 'Módulo preparado para Fase 4: Registro de ciclo controlado por Analy y recordatorios de apapacho.');
+if (!customElements.get('days-view')) {
+    customElements.define('days-view', class extends SectionPlaceholder {
+        connectedCallback() {
+            this.renderSection('🌙', 'Tus Días • Calendario Lunar', 'Privacidad y Cuidado Biológico', 'Seguimiento del ciclo controlado por Analy y recordatorios de apapacho.');
+        }
+    });
+}
+if (!customElements.get('diary-view')) {
+    customElements.define('diary-view', class extends SectionPlaceholder {
+        connectedCallback() {
+            this.renderSection('📖', 'Nuestros Diarios', 'Mi Diario • Su Diario • Nuestro Diario', 'Historias personales y recuerdos compartidos sincronizados.');
+        }
+    });
+}
+if (!customElements.get('star-os-view')) {
+    customElements.define('star-os-view', class extends SectionPlaceholder {
+        connectedCallback() {
+            this.renderSection('💻', 'Star-OS • Configuración', 'Perfiles, Sensores y Sincronización', 'Control de cuentas (Kevin y Analy), permisos de giroscopio y respaldos.');
+        }
+    });
+}
+if (!customElements.get('botiquin-view')) {
+    customElements.define('botiquin-view', class extends SectionPlaceholder {
+        connectedCallback() {
+            this.renderSection('🛠️', 'Botiquín Emocional', 'Protocolos de Apoyo y Calma', 'Mensajes de contención y señal 🌻 para pausar discusiones lógicas.');
+        }
+    });
+}
+if (!customElements.get('agreements-view')) {
+    customElements.define('agreements-view', class extends SectionPlaceholder {
+        connectedCallback() {
+            this.renderSection('🤝', 'Invernadero de Acuerdos', 'Compromisos Explícitos en Pareja', 'Seguimiento bilateral de acuerdos sin presión emocional.');
+        }
+    });
+}
+
+/* =========================================================================
+   ENRUTADOR INTEGRADO A PRUEBA DE FALLOS
+   ========================================================================= */
+class SafeRouter {
+    constructor(routes, rootId) {
+        this.routes = routes;
+        this.root = document.getElementById(rootId);
+        window.addEventListener('hashchange', () => this.resolveRoute());
     }
-});
-customElements.define('diary-view', class extends SectionPlaceholder {
-    connectedCallback() {
-        this.renderSection('📖', 'Nuestros Diarios', 'Mi Diario • Su Diario • Nuestro Diario', 'Módulo preparado para Fase 4: Historias personales y recuerdos compartidos sincronizados.');
+
+    resolveRoute() {
+        if (!this.root) return;
+        const hash = window.location.hash || '#/';
+        const componentName = this.routes[hash] || 'home-view';
+        this.root.innerHTML = `<${componentName}></${componentName}>`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-});
-customElements.define('star-os-view', class extends SectionPlaceholder {
-    connectedCallback() {
-        this.renderSection('💻', 'Star-OS • Configuración', 'Perfiles, Sensores y Sincronización', 'Módulo preparado para Fase 6: Control de cuentas (Kevin y Analy), permisos y respaldos.');
-    }
-});
-customElements.define('botiquin-view', class extends SectionPlaceholder {
-    connectedCallback() {
-        this.renderSection('🛠️', 'Botiquín Emocional', 'Protocolos de Apoyo y Calma', 'Módulo preparado para Fase 4: Mensajes de contención y señal 🌻 para pausar discusiones lógicas.');
-    }
-});
-customElements.define('agreements-view', class extends SectionPlaceholder {
-    connectedCallback() {
-        this.renderSection('🤝', 'Invernadero de Acuerdos', 'Compromisos Explícitos en Pareja', 'Módulo preparado para Fase 4: Seguimiento bilateral de acuerdos sin presión emocional.');
-    }
-});
+}
+
+/* =========================================================================
+   CHISPA DE EMOJIS AL TOCAR (EL DETALLE FAVORITO DE ANALY)
+   ========================================================================= */
+function initTouchEmojiSparkles() {
+    const emojis = ['🌻', '✨', '💖', '🍓', '🌙', '👩🏻‍🍳', '💻'];
+    window.addEventListener('pointerdown', (e) => {
+        const span = document.createElement('span');
+        span.className = 'touch-emoji';
+        span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+        span.style.left = `${e.clientX}px`;
+        span.style.top = `${e.clientY}px`;
+        document.body.appendChild(span);
+        setTimeout(() => span.remove(), 950);
+    }, { passive: true });
+}
 
 /* =========================================================================
    MOTOR ESPACIAL PHOENIX-A + GIROSCOPIO CONTROLADO
@@ -82,7 +160,6 @@ function initPhoenixCosmosEngine() {
         height = canvas.height = window.innerHeight;
     });
 
-    // Alternativa táctil suave
     window.addEventListener('pointermove', (e) => {
         if (gyroEnabled || prefersReducedMotion) return;
         targetOffsetX = ((e.clientX / width) - 0.5) * 28;
@@ -115,7 +192,7 @@ function initPhoenixCosmosEngine() {
                     window.addEventListener('deviceorientation', handleOrientation, true);
                 }
             } catch (err) {
-                console.warn('Permiso de giroscopio rechazado o no disponible:', err);
+                console.warn('Permiso de giroscopio no concedido:', err);
             }
         } else if ('DeviceOrientationEvent' in window) {
             gyroEnabled = true;
@@ -132,7 +209,6 @@ function initPhoenixCosmosEngine() {
             currentOffsetX += (targetOffsetX - currentOffsetX) * 0.08;
             currentOffsetY += (targetOffsetY - currentOffsetY) * 0.08;
 
-            // Dibujar estrellas con parallax
             for (const s of stars) {
                 const sx = (s.x + currentOffsetX * s.depth + width) % width;
                 const sy = (s.y + currentOffsetY * s.depth + height) % height;
@@ -142,13 +218,11 @@ function initPhoenixCosmosEngine() {
                 ctx.fill();
             }
 
-            // Agujero Negro Central Phoenix-A (Anillo Rosa/Dorado como en la referencia móvil)
             const cx = width * 0.5 + currentOffsetX * 0.45;
             const cy = Math.min(height * 0.48, 390) + currentOffsetY * 0.45;
             const outerRadius = Math.min(width, height) * 0.34;
             const innerRadius = outerRadius * 0.54;
 
-            // Resplandor exterior
             const glow = ctx.createRadialGradient(cx, cy, innerRadius * 0.8, cx, cy, outerRadius * 1.35);
             glow.addColorStop(0, 'rgba(244, 114, 182, 0.95)');
             glow.addColorStop(0.55, 'rgba(244, 114, 182, 0.85)');
@@ -160,7 +234,6 @@ function initPhoenixCosmosEngine() {
             ctx.arc(cx, cy, outerRadius * 1.35, 0, Math.PI * 2);
             ctx.fill();
 
-            // Horizonte de sucesos oscuro central
             ctx.fillStyle = '#04060e';
             ctx.beginPath();
             ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
@@ -228,18 +301,11 @@ function initYouTubeAudioEngine() {
 }
 
 /* =========================================================================
-   INICIALIZACIÓN DE LA APLICACIÓN SPA
+   ARRANQUE INMEDIATO DEL ECOSISTEMA
    ========================================================================= */
-document.addEventListener('DOMContentLoaded', () => {
-    const publicStorage = new StorageService(CONFIG.publicStorageKey);
-    const savedState = publicStorage.get() || { initialized: true };
-    const appStore = new Store(savedState);
+async function bootEcosystem() {
+    await loadOptionalViews();
 
-    appStore.subscribe((newState) => {
-        publicStorage.save(newState);
-    });
-
-    // Mapa único de rutas para las 7 secciones
     const routes = {
         '#/': 'home-view',
         '#/jardin': 'garden-view',
@@ -251,15 +317,22 @@ document.addEventListener('DOMContentLoaded', () => {
         '#/acuerdos': 'agreements-view'
     };
 
-    const router = new Router(routes, 'app-root');
+    const router = new SafeRouter(routes, 'app-root');
     router.resolveRoute();
 
     initPhoenixCosmosEngine();
     initYouTubeAudioEngine();
+    initTouchEmojiSparkles();
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('[App] SW Registrado en scope:', reg.scope))
-            .catch(err => console.error('[App] SW Error de registro:', err));
+            .then(reg => console.log('[Our-Garden] SW activo en:', reg.scope))
+            .catch(err => console.warn('[Our-Garden] SW omitido:', err));
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootEcosystem);
+} else {
+    bootEcosystem();
+}

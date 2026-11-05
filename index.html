@@ -1,43 +1,106 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Nuestro Jardín • Kevin & Analy</title>
-    <meta name="theme-color" content="#050711">
+    <meta name="theme-color" content="#04060e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.json">
-    <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌻</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌻</text></svg>">
+    
+    <!-- Estilos modulares -->
     <link rel="stylesheet" href="./src/styles/variables.css">
     <link rel="stylesheet" href="./src/styles/global.css">
     <link rel="stylesheet" href="./src/styles/components.css">
-</head>
 
+    <!-- Estilos críticos inline anti-pantalla negra (por si algún CSS tarda en cargar en GitHub Pages) -->
+    <style>
+        :root {
+            --bg-space-deep: #04060e;
+            --bg-card-glass: rgba(13, 18, 34, 0.78);
+            --border-subtle: rgba(255, 255, 255, 0.14);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-sunflower: #fbbf24;
+            --accent-sunflower-soft: #fde68a;
+            --accent-rose: #fb7185;
+            --accent-sky: #38bdf8;
+            --accent-emerald: #34d399;
+        }
+        body {
+            background-color: #04060e;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        #phoenix-cosmos-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+        }
+        #app-root {
+            position: relative;
+            z-index: 2;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 16px 14px 110px;
+        }
+        .touch-emoji {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            font-size: 1.35rem;
+            animation: floatUpEmoji 0.95s ease-out forwards;
+        }
+        @keyframes floatUpEmoji {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(0.7); }
+            100% { opacity: 0; transform: translate(-50%, -140%) scale(1.35); }
+        }
+    </style>
+</head>
 <body>
     <!-- Lienzo Espacial Interactivo: Estrella Phoenix-A + Nebulosa + Estrellas -->
     <canvas id="phoenix-cosmos-canvas" aria-hidden="true"></canvas>
 
-    <!-- Contenedor Técnico Oculto para el Reproductor Oficial de YouTube (PEM0Vs8jf1w) -->
-    <div id="yt-audio-Wrapper"
-        style="position:fixed;width:1px;height:1px;bottom:-10px;left:-10px;opacity:0.01;pointer-events:none;overflow:hidden;">
+    <!-- Contenedor Oculto para el Reproductor Oficial de YouTube (PEM0Vs8jf1w) -->
+    <div id="yt-audio-wrapper" style="position:fixed;width:1px;height:1px;bottom:-10px;left:-10px;opacity:0.01;pointer-events:none;overflow:hidden;">
         <div id="yt-player-instance"></div>
     </div>
 
     <!-- Encabezado Fijo: Clima, Reloj, Giroscopio y Control de Música -->
     <app-header></app-header>
 
-    <!-- Contenedor Dinámico de Vistas SPA -->
-    <main id="app-root" role="main"></main>
+    <!-- Contenedor Principal (Nunca inicia vacío para evitar pantalla negra) -->
+    <main id="app-root" role="main">
+        <div id="boot-fallback" style="text-align:center;padding:40px 18px;background:rgba(13,18,34,0.8);border:1px solid rgba(251,191,36,0.4);border-radius:20px;margin-top:20px;">
+            <div style="font-size:3rem;margin-bottom:10px;">🌻</div>
+            <h2 style="color:#fbbf24;margin-bottom:8px;">Sincronizando Nuestro Jardín...</h2>
+            <p id="boot-status-msg" style="color:#94a3b8;font-size:0.9rem;">Encendiendo observatorio Phoenix-A y cargando módulos...</p>
+        </div>
+    </main>
 
     <!-- Barra de Navegación Inferior con las 7 Secciones -->
     <bottom-nav></bottom-nav>
 
+    <!-- Monitor de Diagnóstico en Vivo (Si falta un archivo en GitHub te avisa en pantalla en vez de quedarse negro) -->
+    <script>
+        window.addEventListener('error', function(e) {
+            var msgEl = document.getElementById('boot-status-msg');
+            if (msgEl) {
+                msgEl.innerHTML = '⚠️ Ajuste pendiente en archivo: <code style="color:#fb7185;">' + (e.filename || e.message) + '</code>';
+            }
+        }, true);
+    </script>
+
     <!-- Punto de Entrada Modular ES6 -->
     <script type="module" src="./src/app.js"></script>
 </body>
-
 </html>
