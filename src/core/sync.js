@@ -1,3 +1,7 @@
+const DEFAULT_SUPABASE_URL = 'https://gxbuwjtiurgxtzjmwgeg.supabase.com';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_Bvhc4UImRIZ6S7i5vRxQHw_XcG0DagF';
+const DEFAULT_SPACE_ID = 'kevin-analy-22072026';
+
 const SYNC_KEYS = [
     'jardin_stages_v1',
     'our_garden_sunflowers_v2',
@@ -10,94 +14,87 @@ const SYNC_KEYS = [
 
 export class SyncEngine {
     constructor() {
-        this.config = JSON.parse(localStorage.getItem('our_garden_cloud_config')) || {
-            supabaseUrl: '',
-            supabaseAnonKey: '',
-            coupleSpaceId: 'kevin-analy-22072026'
+        const saved = JSON.parse(localStorage.getItem('our_garden_cloud_config')) || {};
+        this.config = {
+            supabaseUrl: (saved.supabaseUrl || DEFAULT_SUPABASE_URL).replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
+            supabaseAnonKey: saved.supabaseAnonKey || DEFAULT_SUPABASE_KEY,
+            coupleSpaceId: saved.coupleSpaceId || DEFAULT_SPACE_ID
         };
+        // Asegurar que la configuración limpia quede guardada
+        localStorage.setItem('our_garden_cloud_config', JSON.stringify(this.config));
+
         this.session = JSON.parse(localStorage.getItem('our_garden_auth_session')) || null;
         this.pendingSync = localStorage.getItem('our_garden_pending_sync') === 'true';
-        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Sin sincronizar aún';
+        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Listo para sincronizar';
+        this.connectionState = 'ready';
+        this.lastError = '';
         this.pollTimer = null;
     }
 
     init() {
+        // Al abrir la app, descarga los últimos cambios de la nube y si está vacía sube el estado inicial
+        if (this.isConfigured() && navigator.onLine) {
+            this.pullFromCloud().then((res) => {
+                if (res && res.empty) {
+                    this.syncNow();
+                }
+            });
+        }
+
         window.addEventListener('online', () => {
-            if (this.pendingSync) this.syncNow('auto-reconnect');
+            if (this.pendingSync) this.syncNow();
         });
 
-        // Sincronización periódica ligera cuando la app está visible y conectada
+        // Revisar cada 20 segundos si la otra persona hizo algún cambio
         this.pollTimer = setInterval(() => {
             if (!document.hidden && this.isConfigured() && navigator.onLine) {
                 this.pullFromCloud();
             }
-        }, 25000);
+        }, 20000);
     }
 
     isConfigured() {
         return Boolean(this.config.supabaseUrl && this.config.supabaseAnonKey);
     }
 
-    saveCloudConfig(url, anonKey, spaceId = 'kevin-analy-22072026') {
+    saveCloudConfig(url, anonKey, spaceId = DEFAULT_SPACE_ID) {
+        const cleanUrl = (url || DEFAULT_SUPABASE_URL).trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+        let cleanKey = (anonKey || DEFAULT_SUPABASE_KEY).trim();
+        if (cleanKey.startsWith('Sb_publishable_')) {
+            cleanKey = 's' + cleanKey.slice(1);
+        }
+
         this.config = {
-            supabaseUrl: url.trim().replace(/\/$/, ''),
-            supabaseAnonKey: anonKey.trim(),
-            coupleSpaceId: spaceId.trim() || 'kevin-analy-22072026'
+            supabaseUrl: cleanUrl,
+            supabaseAnonKey: cleanKey,
+            coupleSpaceId: (spaceId || DEFAULT_SPACE_ID).trim()
         };
         localStorage.setItem('our_garden_cloud_config', JSON.stringify(this.config));
-        this.emitStatus('Configuración de nube guardada');
+        this.connectionState = 'ready';
+        this.lastError = '';
     }
 
-    async loginPartner(role, email, password) {
+    getHeaders(extra = {}) {
+        return {
+            'apikey': this.config.supabaseAnonKey,
+            'Authorization': `Bearer ${this.config.supabaseAnonKey}`,
+            ...extra
+        };
+    }
+
+    async loginPartner(role) {
         const cleanRole = role === 'analy' ? 'analy' : 'kevin';
         localStorage.setItem('our_garden_active_user', cleanRole);
 
-        // Si Supabase Auth está configurado con email y password, autentica contra Supabase
-        if (this.isConfigured() && email && password) {
-            try {
-                const res = await fetch(`${this.config.supabaseUrl}/auth/v1/token?grant_type=password`, {
-                    method: 'POST',
-                    headers: {
-                        'apikey': this.config.supabaseAnonKey,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email, password })
-                });
-                if (res.ok) {
-                    const authData = await res.json();
-                    this.session = {
-                        role: cleanRole,
-                        email: email,
-                        accessToken: authData.access_token,
-                        loggedAt: new Date().toISOString()
-                    };
-                    localStorage.setItem('our_garden_auth_session', JSON.stringify(this.session));
-                    await this.syncNow('login');
-                    return { ok: true, mode: 'cloud-auth' };
-                }
-            } catch (err) {
-                console.warn('Fallo login remoto, activando sesión autorizada de pareja:', err);
-            }
-        }
-
-        // Sesión autorizada de pareja (funciona con clave Anon + RLS por coupleSpaceId)
         this.session = {
             role: cleanRole,
-            email: email || (cleanRole === 'kevin' ? 'kevin@nuestrojardin.app' : 'analy@nuestrojardin.app'),
-            accessToken: this.config.supabaseAnonKey || 'local-session',
             loggedAt: new Date().toISOString()
         };
         localStorage.setItem('our_garden_auth_session', JSON.stringify(this.session));
         if (this.isConfigured()) {
-            await this.syncNow('login');
+            await this.syncNow();
         }
-        return { ok: true, mode: this.isConfigured() ? 'cloud-shared' : 'local' };
-    }
-
-    logout() {
-        this.session = null;
-        localStorage.removeItem('our_garden_auth_session');
-        this.emitStatus('Sesión cerrada');
+        return { ok: true };
     }
 
     collectLocalPayload() {
@@ -105,59 +102,36 @@ export class SyncEngine {
         SYNC_KEYS.forEach(k => {
             const raw = localStorage.getItem(k);
             if (raw) {
-                try {
-                    payload[k] = JSON.parse(raw);
-                } catch (e) {
-                    payload[k] = raw;
-                }
+                try { payload[k] = JSON.parse(raw); } catch (e) { payload[k] = raw; }
             }
         });
         return payload;
     }
 
-    async syncNow(reason = 'manual') {
-        if (!this.isConfigured()) {
-            this.pendingSync = true;
-            localStorage.setItem('our_garden_pending_sync', 'true');
-            this.emitStatus('Modo Local (Falta conectar URL de Supabase)');
-            return { ok: false, message: 'Configura la URL y Anon Key de Supabase en Star-OS.' };
-        }
-
+    async syncNow() {
         if (!navigator.onLine) {
             this.pendingSync = true;
             localStorage.setItem('our_garden_pending_sync', 'true');
-            this.emitStatus('Sin conexión • Cambios guardados en cola');
-            return { ok: false, message: 'Sin internet. Se sincronizará automáticamente al reconectar.' };
+            this.connectionState = 'offline';
+            return { ok: false, message: '📡 Sin señal de internet. Se guardó en el teléfono y subirá al reconectar.' };
         }
 
         try {
-            this.emitStatus('Sincronizando con la nube...');
             const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
-
-            // 1. Primero consultamos el estado remoto para no sobrescribir datos privados de la otra persona
             const remote = await this.fetchRemoteRow();
             const localPayload = this.collectLocalPayload();
 
-            if (remote && remote.payload) {
-                // Regla de privacidad estricta: solo Analy puede modificar sus registros de salud en la nube
-                if (activeUser !== 'analy' && remote.payload.our_garden_cycle_v1) {
-                    localPayload.our_garden_cycle_v1 = remote.payload.our_garden_cycle_v1;
-                }
+            // Respetar privacidad de los registros de salud de Analy
+            if (remote && remote.payload && activeUser !== 'analy' && remote.payload.our_garden_cycle_v1) {
+                localPayload.our_garden_cycle_v1 = remote.payload.our_garden_cycle_v1;
             }
-
-            // 2. Enviamos el estado combinado (Upsert en tabla ecosystem_sync)
-            const token = (this.session && this.session.accessToken && this.session.accessToken !== 'local-session')
-                ? this.session.accessToken
-                : this.config.supabaseAnonKey;
 
             const res = await fetch(`${this.config.supabaseUrl}/rest/v1/ecosystem_sync`, {
                 method: 'POST',
-                headers: {
-                    'apikey': this.config.supabaseAnonKey,
-                    'Authorization': `Bearer ${token}`,
+                headers: this.getHeaders({
                     'Content-Type': 'application/json',
                     'Prefer': 'resolution=merge-duplicates,return=representation'
-                },
+                }),
                 body: JSON.stringify({
                     space_id: this.config.coupleSpaceId,
                     updated_by: activeUser,
@@ -166,31 +140,37 @@ export class SyncEngine {
                 })
             });
 
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                const errTxt = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errTxt}`);
+            }
 
             this.pendingSync = false;
             localStorage.setItem('our_garden_pending_sync', 'false');
             this.lastSyncTime = new Date().toLocaleTimeString('es-MX');
             localStorage.setItem('our_garden_last_sync', this.lastSyncTime);
-            this.emitStatus(`Sincronizado (${this.lastSyncTime})`);
-            return { ok: true, message: `Sincronización exitosa (${this.lastSyncTime})` };
+            this.connectionState = 'connected';
+            this.lastError = '';
+            return { ok: true, message: `🟢 ¡Sincronizado en Supabase a las ${this.lastSyncTime}!` };
         } catch (err) {
-            this.pendingSync = true;
-            localStorage.setItem('our_garden_pending_sync', 'true');
-            this.emitStatus('Error de red • Reintento en cola');
-            return { ok: false, message: 'No se pudo conectar con la tabla remota. Verifica las credenciales o el SQL.' };
+            this.connectionState = 'error';
+            this.lastError = err.message || 'Error de red';
+            return {
+                ok: false,
+                message: `🔴 Error al guardar en Supabase (${this.lastError}). Verifica haber corrido el script SQL de la tabla ecosystem_sync.`
+            };
         }
     }
 
     async fetchRemoteRow() {
         const url = `${this.config.supabaseUrl}/rest/v1/ecosystem_sync?space_id=eq.${encodeURIComponent(this.config.coupleSpaceId)}&select=*`;
         const res = await fetch(url, {
-            headers: {
-                'apikey': this.config.supabaseAnonKey,
-                'Authorization': `Bearer ${this.config.supabaseAnonKey}`
-            }
+            headers: this.getHeaders()
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`HTTP ${res.status}: ${txt}`);
+        }
         const rows = await res.json();
         return rows && rows.length > 0 ? rows[0] : null;
     }
@@ -199,7 +179,11 @@ export class SyncEngine {
         if (!this.isConfigured() || !navigator.onLine) return { ok: false };
         try {
             const row = await this.fetchRemoteRow();
-            if (!row || !row.payload) return { ok: false };
+            this.connectionState = 'connected';
+            this.lastError = '';
+            if (!row || !row.payload) {
+                return { ok: true, empty: true };
+            }
 
             Object.entries(row.payload).forEach(([key, val]) => {
                 if (SYNC_KEYS.includes(key) && val !== undefined) {
@@ -209,15 +193,12 @@ export class SyncEngine {
 
             this.lastSyncTime = new Date().toLocaleTimeString('es-MX');
             localStorage.setItem('our_garden_last_sync', this.lastSyncTime);
-            this.emitStatus(`Actualizado desde ${row.updated_by === 'analy' ? 'Analy 👩🏻‍🍳' : 'Kevin 💻'} (${this.lastSyncTime})`);
             return { ok: true, updatedBy: row.updated_by };
         } catch (e) {
-            return { ok: false };
+            this.connectionState = 'error';
+            this.lastError = e.message;
+            return { ok: false, error: e.message };
         }
-    }
-
-    emitStatus(text) {
-        window.dispatchEvent(new CustomEvent('ecosystem:sync-status', { detail: { text } }));
     }
 }
 
