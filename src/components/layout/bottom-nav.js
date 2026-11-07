@@ -3,6 +3,7 @@ export class BottomNav extends HTMLElement {
         this.render();
         window.addEventListener('hashchange', () => this.highlightActive());
         this.highlightActive();
+        this.bindPulseEvents();
     }
 
     render() {
@@ -18,7 +19,11 @@ export class BottomNav extends HTMLElement {
                 </a>
                 <a href="#/diario" class="nav-item" data-route="#/diario">
                     <span class="nav-icon">📖</span>
-                    <span>Diarios</span>
+                    <span>Diario</span>
+                </a>
+                <a href="#/biblioteca" class="nav-item" data-route="#/biblioteca">
+                    <span class="nav-icon">📚</span>
+                    <span>Biblioteca</span>
                 </a>
                 <a href="#/arcade" class="nav-item" data-route="#/arcade">
                     <span class="nav-icon">👾</span>
@@ -40,12 +45,29 @@ export class BottomNav extends HTMLElement {
         `;
     }
 
+    bindPulseEvents() {
+        this.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('pointerdown', (e) => {
+                const rect = item.getBoundingClientRect();
+                const originX = rect.left + rect.width / 2;
+                const originY = rect.top + rect.height / 2;
+                window.dispatchEvent(new CustomEvent('ecosystem:trigger-construction', {
+                    detail: {
+                        route: item.getAttribute('data-route'),
+                        originX,
+                        originY
+                    }
+                }));
+            });
+        });
+    }
+
     highlightActive() {
         const currentHash = window.location.hash || '#/';
         this.querySelectorAll('.nav-item').forEach(link => {
             const route = link.getAttribute('data-route');
-            const isHomeOrGarden = (currentHash === '#/' || currentHash === '#/jardin') && route === '#/';
-            link.classList.toggle('active', currentHash === route || isHomeOrGarden);
+            const isHome = currentHash === '#/' && route === '#/';
+            link.classList.toggle('active', currentHash === route || isHome);
         });
     }
 }

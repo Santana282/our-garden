@@ -9,30 +9,36 @@ const SYNC_KEYS = [
     'our_garden_diary_v1',
     'our_garden_botiquin_v1',
     'our_garden_agreements_v1',
-    'our_garden_arcade_scores_v1'
+    'our_garden_arcade_scores_v1',
+    'our_garden_library_v1',
+    'our_garden_daily_light_v1',
+    'our_garden_universe_prefs_v1'
 ];
 
 export class SyncEngine {
     constructor() {
         const saved = JSON.parse(localStorage.getItem('our_garden_cloud_config')) || {};
+        let cleanKey = (saved.supabaseAnonKey || DEFAULT_SUPABASE_KEY).trim();
+        if (cleanKey.startsWith('Sb_publishable_')) {
+            cleanKey = 's' + cleanKey.slice(1);
+        }
+
         this.config = {
-            supabaseUrl: (saved.supabaseUrl || DEFAULT_SUPABASE_URL).replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
-            supabaseAnonKey: saved.supabaseAnonKey || DEFAULT_SUPABASE_KEY,
-            coupleSpaceId: saved.coupleSpaceId || DEFAULT_SPACE_ID
+            supabaseUrl: (saved.supabaseUrl || DEFAULT_SUPABASE_URL).trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
+            supabaseAnonKey: cleanKey,
+            coupleSpaceId: (saved.coupleSpaceId || DEFAULT_SPACE_ID).trim()
         };
-        // Asegurar que la configuración limpia quede guardada
         localStorage.setItem('our_garden_cloud_config', JSON.stringify(this.config));
 
         this.session = JSON.parse(localStorage.getItem('our_garden_auth_session')) || null;
         this.pendingSync = localStorage.getItem('our_garden_pending_sync') === 'true';
-        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Listo para sincronizar';
+        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Sincronización lista';
         this.connectionState = 'ready';
         this.lastError = '';
         this.pollTimer = null;
     }
 
     init() {
-        // Al abrir la app, descarga los últimos cambios de la nube y si está vacía sube el estado inicial
         if (this.isConfigured() && navigator.onLine) {
             this.pullFromCloud().then((res) => {
                 if (res && res.empty) {
@@ -45,33 +51,15 @@ export class SyncEngine {
             if (this.pendingSync) this.syncNow();
         });
 
-        // Revisar cada 20 segundos si la otra persona hizo algún cambio
         this.pollTimer = setInterval(() => {
             if (!document.hidden && this.isConfigured() && navigator.onLine) {
                 this.pullFromCloud();
             }
-        }, 20000);
+        }, 25000);
     }
 
     isConfigured() {
         return Boolean(this.config.supabaseUrl && this.config.supabaseAnonKey);
-    }
-
-    saveCloudConfig(url, anonKey, spaceId = DEFAULT_SPACE_ID) {
-        const cleanUrl = (url || DEFAULT_SUPABASE_URL).trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-        let cleanKey = (anonKey || DEFAULT_SUPABASE_KEY).trim();
-        if (cleanKey.startsWith('Sb_publishable_')) {
-            cleanKey = 's' + cleanKey.slice(1);
-        }
-
-        this.config = {
-            supabaseUrl: cleanUrl,
-            supabaseAnonKey: cleanKey,
-            coupleSpaceId: (spaceId || DEFAULT_SPACE_ID).trim()
-        };
-        localStorage.setItem('our_garden_cloud_config', JSON.stringify(this.config));
-        this.connectionState = 'ready';
-        this.lastError = '';
     }
 
     getHeaders(extra = {}) {
@@ -85,7 +73,6 @@ export class SyncEngine {
     async loginPartner(role) {
         const cleanRole = role === 'analy' ? 'analy' : 'kevin';
         localStorage.setItem('our_garden_active_user', cleanRole);
-
         this.session = {
             role: cleanRole,
             loggedAt: new Date().toISOString()
@@ -113,7 +100,7 @@ export class SyncEngine {
             this.pendingSync = true;
             localStorage.setItem('our_garden_pending_sync', 'true');
             this.connectionState = 'offline';
-            return { ok: false, message: '📡 Sin señal de internet. Se guardó en el teléfono y subirá al reconectar.' };
+            return { ok: false, message: '📡 Sin conexión. Cambios guardados en el dispositivo.' };
         }
 
         try {
@@ -121,7 +108,6 @@ export class SyncEngine {
             const remote = await this.fetchRemoteRow();
             const localPayload = this.collectLocalPayload();
 
-            // Respetar privacidad de los registros de salud de Analy
             if (remote && remote.payload && activeUser !== 'analy' && remote.payload.our_garden_cycle_v1) {
                 localPayload.our_garden_cycle_v1 = remote.payload.our_garden_cycle_v1;
             }
@@ -151,22 +137,20 @@ export class SyncEngine {
             localStorage.setItem('our_garden_last_sync', this.lastSyncTime);
             this.connectionState = 'connected';
             this.lastError = '';
-            return { ok: true, message: `🟢 ¡Sincronizado en Supabase a las ${this.lastSyncTime}!` };
+            return { ok: true, message: `🟢 ¡Sincronizado en Supabase (${this.lastSyncTime})!` };
         } catch (err) {
             this.connectionState = 'error';
-            this.lastError = err.message || 'Error de red';
+            this.lastError = err.message || 'Error de conexión';
             return {
                 ok: false,
-                message: `🔴 Error al guardar en Supabase (${this.lastError}). Verifica haber corrido el script SQL de la tabla ecosystem_sync.`
+                message: `🔴 Falta activar la tabla en Supabase (${this.lastError}). Sigue el Paso 4.2 de la guía.`
             };
         }
     }
 
     async fetchRemoteRow() {
         const url = `${this.config.supabaseUrl}/rest/v1/ecosystem_sync?space_id=eq.${encodeURIComponent(this.config.coupleSpaceId)}&select=*`;
-        const res = await fetch(url, {
-            headers: this.getHeaders()
-        });
+        const res = await fetch(url, { headers: this.getHeaders() });
         if (!res.ok) {
             const txt = await res.text();
             throw new Error(`HTTP ${res.status}: ${txt}`);
@@ -181,9 +165,7 @@ export class SyncEngine {
             const row = await this.fetchRemoteRow();
             this.connectionState = 'connected';
             this.lastError = '';
-            if (!row || !row.payload) {
-                return { ok: true, empty: true };
-            }
+            if (!row || !row.payload) return { ok: true, empty: true };
 
             Object.entries(row.payload).forEach(([key, val]) => {
                 if (SYNC_KEYS.includes(key) && val !== undefined) {
