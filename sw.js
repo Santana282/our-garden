@@ -1,6 +1,6 @@
-const CACHE_NAME = 'our-garden-v3-clean';
+const CACHE_NAME = 'our-garden-v9-network-safe';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
     self.skipWaiting();
 });
 
@@ -18,17 +18,26 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Estrategia Network-First: siempre busca la versión más reciente en GitHub Pages
-// y solo usa caché si no hay conexión a internet.
+// Solo cachear archivos propios de GitHub Pages; NUNCA interceptar Supabase, Clima ni YouTube
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
+
+    const requestUrl = new URL(event.request.url);
+    if (requestUrl.origin !== self.location.origin) {
+        return; // Deja pasar directo a internet las APIs externas (Supabase, Open-Meteo, NASA)
+    }
+
     event.respondWith(
         fetch(event.request)
             .then((networkResponse) => {
-                const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                if (networkResponse && networkResponse.status === 200) {
+                    const clone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                }
                 return networkResponse;
             })
-            .catch(() => caches.match(event.request))
+            .catch(() =>
+                caches.match(event.request).then((cached) => cached || Response.error())
+            )
     );
 });

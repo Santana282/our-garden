@@ -15,25 +15,37 @@ const SYNC_KEYS = [
     'our_garden_universe_prefs_v1'
 ];
 
+export const SUPABASE_SETUP_SQL = `create table if not exists public.ecosystem_sync (
+  space_id text primary key,
+  updated_by text not null,
+  updated_at timestamptz default now(),
+  payload jsonb not null default '{}'::jsonb
+);
+
+alter table public.ecosystem_sync enable row level security;
+
+drop policy if exists "Acceso compartido Kevin y Analy" on public.ecosystem_sync;
+
+create policy "Acceso compartido Kevin y Analy"
+on public.ecosystem_sync
+for all
+using (true)
+with check (true);`;
+
 export class SyncEngine {
     constructor() {
-        const saved = JSON.parse(localStorage.getItem('our_garden_cloud_config')) || {};
-        let cleanKey = (saved.supabaseAnonKey || DEFAULT_SUPABASE_KEY).trim();
-        if (cleanKey.startsWith('Sb_publishable_')) {
-            cleanKey = 's' + cleanKey.slice(1);
-        }
-
+        // Forzar siempre la URL y Key limpias para eliminar configuraciones viejas en caché
         this.config = {
-            supabaseUrl: (saved.supabaseUrl || DEFAULT_SUPABASE_URL).trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
-            supabaseAnonKey: cleanKey,
-            coupleSpaceId: (saved.coupleSpaceId || DEFAULT_SPACE_ID).trim()
+            supabaseUrl: DEFAULT_SUPABASE_URL,
+            supabaseAnonKey: DEFAULT_SUPABASE_KEY,
+            coupleSpaceId: DEFAULT_SPACE_ID
         };
         localStorage.setItem('our_garden_cloud_config', JSON.stringify(this.config));
 
         this.session = JSON.parse(localStorage.getItem('our_garden_auth_session')) || null;
         this.pendingSync = localStorage.getItem('our_garden_pending_sync') === 'true';
-        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Sincronización lista';
-        this.connectionState = 'ready';
+        this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || 'Verificando nube...';
+        this.connectionState = 'checking'; // 'checking' | 'connected' | 'table_missing' | 'offline_saved'
         this.lastError = '';
         this.pollTimer = null;
     }
@@ -62,12 +74,17 @@ export class SyncEngine {
         return Boolean(this.config.supabaseUrl && this.config.supabaseAnonKey);
     }
 
+    // Compatible tanto con las nuevas llaves sb_publishable_ como con las antiguas eyJ...
     getHeaders(extra = {}) {
-        return {
-            'apikey': this.config.supabaseAnonKey,
-            'Authorization': `Bearer ${this.config.supabaseAnonKey}`,
+        const key = this.config.supabaseAnonKey.trim();
+        const headers = {
+            'apikey': key,
             ...extra
         };
+        if (key.startsWith('eyJ')) {
+            headers['Authorization'] = `Bearer ${key}`;
+        }
+        return headers;
     }
 
     async loginPartner(role) {
@@ -78,10 +95,8 @@ export class SyncEngine {
             loggedAt: new Date().toISOString()
         };
         localStorage.setItem('our_garden_auth_session', JSON.stringify(this.session));
-        if (this.isConfigured()) {
-            await this.syncNow();
-        }
-        return { ok: true };
+        const syncRes = await this.syncNow();
+        return { ok: syncRes.ok, message: syncRes.message };
     }
 
     collectLocalPayload() {
@@ -99,8 +114,8 @@ export class SyncEngine {
         if (!navigator.onLine) {
             this.pendingSync = true;
             localStorage.setItem('our_garden_pending_sync', 'true');
-            this.connectionState = 'offline';
-            return { ok: false, message: '📡 Sin conexión. Cambios guardados en el dispositivo.' };
+            this.connectionState = 'offline_saved';
+            return { ok: false, message: '📡 Sin internet. Cambios guardados en tu teléfono.' };
         }
 
         try {
@@ -114,6 +129,7 @@ export class SyncEngine {
 
             const res = await fetch(`${this.config.supabaseUrl}/rest/v1/ecosystem_sync`, {
                 method: 'POST',
+                mode: 'cors',
                 headers: this.getHeaders({
                     'Content-Type': 'application/json',
                     'Prefer': 'resolution=merge-duplicates,return=representation'
@@ -128,6 +144,15 @@ export class SyncEngine {
 
             if (!res.ok) {
                 const errTxt = await res.text();
+                if (res.status === 404 || errTxt.includes('ecosystem_sync') || errTxt.includes('PGRST205')) {
+                    this.connectionState = 'table_missing';
+                    this.lastError = 'Falta ejecutar el comando SQL en Supabase para crear la tabla ecosystem_sync.';
+                    window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
+                    return {
+                        ok: false,
+                        message: '🟡 Conectado a Supabase, pero falta crear la tabla ecosystem_sync (Copia el SQL abajo).'
+                    };
+                }
                 throw new Error(`HTTP ${res.status}: ${errTxt}`);
             }
 
@@ -137,20 +162,35 @@ export class SyncEngine {
             localStorage.setItem('our_garden_last_sync', this.lastSyncTime);
             this.connectionState = 'connected';
             this.lastError = '';
-            return { ok: true, message: `🟢 ¡Sincronizado en Supabase (${this.lastSyncTime})!` };
+            window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
+            return { ok: true, message: `🟢 ¡Sincronizado en la nube a las ${this.lastSyncTime}!` };
         } catch (err) {
-            this.connectionState = 'error';
-            this.lastError = err.message || 'Error de conexión';
+            this.pendingSync = true;
+            localStorage.setItem('our_garden_pending_sync', 'true');
+            const msg = String(err.message || err);
+
+            if (msg.includes('ecosystem_sync') || msg.includes('404') || msg.includes('PGRST205')) {
+                this.connectionState = 'table_missing';
+                this.lastError = 'La tabla ecosystem_sync aún no ha sido creada en el SQL Editor de Supabase.';
+            } else {
+                this.connectionState = 'offline_saved';
+                this.lastError = msg;
+            }
+            window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
             return {
                 ok: false,
-                message: `🔴 Falta activar la tabla en Supabase (${this.lastError}). Sigue el Paso 4.2 de la guía.`
+                message: `🟡 Guardado en tu teléfono. Para sincronizar en la nube, verifica el paso SQL en Supabase.`
             };
         }
     }
 
     async fetchRemoteRow() {
         const url = `${this.config.supabaseUrl}/rest/v1/ecosystem_sync?space_id=eq.${encodeURIComponent(this.config.coupleSpaceId)}&select=*`;
-        const res = await fetch(url, { headers: this.getHeaders() });
+        const res = await fetch(url, {
+            method: 'GET',
+            mode: 'cors',
+            headers: this.getHeaders()
+        });
         if (!res.ok) {
             const txt = await res.text();
             throw new Error(`HTTP ${res.status}: ${txt}`);
@@ -165,7 +205,10 @@ export class SyncEngine {
             const row = await this.fetchRemoteRow();
             this.connectionState = 'connected';
             this.lastError = '';
-            if (!row || !row.payload) return { ok: true, empty: true };
+            if (!row || !row.payload) {
+                window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
+                return { ok: true, empty: true };
+            }
 
             Object.entries(row.payload).forEach(([key, val]) => {
                 if (SYNC_KEYS.includes(key) && val !== undefined) {
@@ -175,11 +218,19 @@ export class SyncEngine {
 
             this.lastSyncTime = new Date().toLocaleTimeString('es-MX');
             localStorage.setItem('our_garden_last_sync', this.lastSyncTime);
+            window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
             return { ok: true, updatedBy: row.updated_by };
         } catch (e) {
-            this.connectionState = 'error';
-            this.lastError = e.message;
-            return { ok: false, error: e.message };
+            const msg = String(e.message || e);
+            if (msg.includes('404') || msg.includes('ecosystem_sync') || msg.includes('PGRST205')) {
+                this.connectionState = 'table_missing';
+                this.lastError = 'Falta crear la tabla ecosystem_sync en el SQL Editor de Supabase.';
+            } else {
+                this.connectionState = 'offline_saved';
+                this.lastError = msg;
+            }
+            window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
+            return { ok: false, error: msg };
         }
     }
 }

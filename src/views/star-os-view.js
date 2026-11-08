@@ -1,6 +1,4 @@
-import { syncEngine } from '../core/sync.js';
-import { LIBRARY_CATEGORIES, INITIAL_BOOKS } from './library-view.js';
-import { DEFAULT_DAILY_LIGHTS } from './home-view.js';
+import { syncEngine, SUPABASE_SETUP_SQL } from '../core/sync.js';
 
 export class StarOsView extends HTMLElement {
     constructor() {
@@ -10,15 +8,24 @@ export class StarOsView extends HTMLElement {
         this.sparklesEnabled = localStorage.getItem('our_garden_sparkles') !== 'false';
         this.prefs = JSON.parse(localStorage.getItem('our_garden_universe_prefs_v1')) || {
             gyroSensitivity: 1.2,
-            motionMode: 'auto', // 'auto' | 'manual'
+            motionMode: 'auto',
             constructionAnimEnabled: true
         };
         this.statusBanner = '';
+        this.boundSyncUpdate = () => {
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:sync-updated', this.boundSyncUpdate);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:sync-updated', this.boundSyncUpdate);
     }
 
     savePrefs() {
@@ -28,19 +35,39 @@ export class StarOsView extends HTMLElement {
     }
 
     getSemaphoreBadge() {
-        if (syncEngine.connectionState === 'error') {
+        if (syncEngine.connectionState === 'connected') {
             return {
-                color: '#fb7185',
-                bg: 'rgba(251, 113, 133, 0.14)',
-                title: '🔴 FALTA CREAR LA TABLA EN SUPABASE (PASO 4.2)',
-                desc: `Detalle: ${syncEngine.lastError}. Abre el SQL Editor en Supabase, pega las 12 líneas de la guía y toca Run.`
+                color: '#34d399',
+                bg: 'rgba(52, 211, 153, 0.14)',
+                title: '🟢 NUBE SUPABASE SINCRONIZADA EN TIEMPO REAL',
+                desc: `Conectado a gxbuwjtiurgxtzjmwgeg • Espacio: ${syncEngine.config.coupleSpaceId} • Última sinc.: ${syncEngine.lastSyncTime}`,
+                needsSqlHelper: false
+            };
+        }
+        if (syncEngine.connectionState === 'table_missing') {
+            return {
+                color: '#fbbf24',
+                bg: 'rgba(251, 191, 36, 0.14)',
+                title: '🟡 CONECTADO A SUPABASE • SOLO FALTA CREAR LA TABLA SQL',
+                desc: 'Tu llave y tu link ya funcionan. Solo toca el botón "📋 Copiar Código SQL" de abajo, pégalo en el SQL Editor de Supabase y presiona Run.',
+                needsSqlHelper: true
+            };
+        }
+        if (syncEngine.connectionState === 'offline_saved') {
+            return {
+                color: '#fbbf24',
+                bg: 'rgba(251, 191, 36, 0.14)',
+                title: '🟡 MODO HÍBRIDO ACTIVO (GUARDADO EN TU TELÉFONO)',
+                desc: `Tus cambios están seguros en este dispositivo (${syncEngine.lastError || 'Esperando respuesta de tabla en Supabase'}). Toca "📋 Copiar Código SQL" abajo si aún no has creado la tabla.`,
+                needsSqlHelper: true
             };
         }
         return {
-            color: '#34d399',
-            bg: 'rgba(52, 211, 153, 0.14)',
-            title: '🟢 NUBE SUPABASE INTEGRADA Y ACTIVA',
-            desc: `Proyecto: gxbuwjtiurgxtzjmwgeg • Espacio: ${syncEngine.config.coupleSpaceId} • Última sinc.: ${syncEngine.lastSyncTime}`
+            color: '#38bdf8',
+            bg: 'rgba(56, 189, 248, 0.14)',
+            title: '🔵 VERIFICANDO CONEXIÓN CON SUPABASE...',
+            desc: `Proyecto: gxbuwjtiurgxtzjmwgeg • Comprobando estado de la tabla ecosystem_sync...`,
+            needsSqlHelper: false
         };
     }
 
@@ -55,10 +82,20 @@ export class StarOsView extends HTMLElement {
                 </p>
             </section>
 
-            <!-- SEMÁFORO DE ESTADO DE LA NUBE -->
+            <!-- SEMÁFORO INTELIGENTE -->
             <div style="background:${sem.bg};border:1.5px solid ${sem.color};padding:14px;border-radius:16px;margin-bottom:14px;">
-                <div style="font-weight:900;font-size:0.9rem;color:${sem.color};margin-bottom:4px;">${sem.title}</div>
-                <div style="font-size:0.8rem;color:var(--text-primary);">${sem.desc}</div>
+                <div style="font-weight:900;font-size:0.88rem;color:${sem.color};margin-bottom:4px;">${sem.title}</div>
+                <div style="font-size:0.8rem;color:var(--text-primary);line-height:1.45;">${sem.desc}</div>
+                ${sem.needsSqlHelper ? `
+                    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="pill-action-btn" id="btn-copy-sql-script" style="border-color:var(--border-gold);color:var(--accent-sunflower-soft);">
+                            📋 1. Copiar Código SQL de la Tabla
+                        </button>
+                        <a href="https://supabase.com/dashboard/project/gxbuwjtiurgxtzjmwgeg/sql/new" target="_blank" rel="noopener" class="pill-action-btn" style="text-decoration:none;">
+                            🚀 2. Abrir SQL Editor en Supabase ➔
+                        </a>
+                    </div>
+                ` : ''}
             </div>
 
             ${this.statusBanner ? `
@@ -67,7 +104,7 @@ export class StarOsView extends HTMLElement {
                 </div>
             ` : ''}
 
-            <!-- 1. SINCRONIZACIÓN DIRECTA Y PERFIL ACTIVO -->
+            <!-- 1. PERFILES Y SINCRONIZACIÓN BIDIRECCIONAL -->
             <div class="stage-card" style="margin-top:0;margin-bottom:14px;">
                 <div class="stage-title">☁️ 1. Perfiles y Sincronización Bidireccional</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -89,9 +126,13 @@ export class StarOsView extends HTMLElement {
                         ⬇️ Descargar de pareja
                     </button>
                 </div>
+
+                <button type="button" class="loc-chip active" id="btn-copy-clean-link" style="width:100%;padding:10px;text-align:center;font-size:0.8rem;">
+                    📲 Copiar nuestro link oficial para mandárselo a Analy
+                </button>
             </div>
 
-            <!-- 2. CONTROLES AVANZADOS DE GIROSCOPIO Y CONSTRUCCIÓN VISUAL (SECCIONES 23 Y 24) -->
+            <!-- 2. CALIBRACIÓN DEL UNIVERSO, GIROSCOPIO Y CONSTRUCCIÓN VISUAL -->
             <div class="stage-card" style="margin-bottom:14px;">
                 <div class="stage-title">🪐 2. Calibración del Universo, Giroscopio y Construcción Visual</div>
                 <div class="cards-grid-3" style="margin-bottom:12px;">
@@ -140,7 +181,7 @@ export class StarOsView extends HTMLElement {
             <div class="stage-card" style="margin-bottom:14px;border-color:var(--border-gold);">
                 <div class="stage-title">🛠️ 3. Administración de Contenidos (Sin tocar código)</div>
                 <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px;">
-                    Agrega nuevas frases diarias a <strong>"Una luz para hoy"</strong> o publica mensajes especiales directamente en nuestro ecosistema:
+                    Agrega nuevas frases diarias a <strong>"Una luz para hoy"</strong> directamente en nuestro ecosistema:
                 </p>
 
                 <div style="display:flex;flex-direction:column;gap:8px;">
@@ -183,6 +224,13 @@ export class StarOsView extends HTMLElement {
     }
 
     bindEvents() {
+        this.querySelector('#btn-copy-sql-script')?.addEventListener('click', () => {
+            navigator.clipboard?.writeText(SUPABASE_SETUP_SQL);
+            this.statusBanner = '✅ ¡Código SQL copiado al portapapeles! Ahora toca el botón "2. Abrir SQL Editor en Supabase", pégalo ahí y presiona Run.';
+            this.render();
+            this.bindEvents();
+        });
+
         this.querySelector('#btn-push-cloud')?.addEventListener('click', async () => {
             this.statusBanner = '⏳ Subiendo datos a Supabase...';
             this.render();
@@ -206,8 +254,16 @@ export class StarOsView extends HTMLElement {
             } else if (res.ok) {
                 this.statusBanner = `🟢 ¡Sincronizado! Última actualización por ${res.updatedBy === 'analy' ? 'Analy 👩🏻‍🍳' : 'Kevin 💻'}.`;
             } else {
-                this.statusBanner = `🔴 Error: ${res.error || 'Ejecuta el Paso 4.2 en el SQL Editor de Supabase.'}`;
+                this.statusBanner = `🟡 Guardado localmente. Si aún no creas la tabla en Supabase, usa el botón "1. Copiar Código SQL" arriba.`;
             }
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#btn-copy-clean-link')?.addEventListener('click', () => {
+            const url = 'https://santana282.github.io/our-garden/';
+            navigator.clipboard?.writeText(url);
+            this.statusBanner = '✅ Link oficial copiado al portapapeles listo para enviárselo a Analy.';
             this.render();
             this.bindEvents();
         });
@@ -215,8 +271,8 @@ export class StarOsView extends HTMLElement {
         this.querySelectorAll('[data-switch-user]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 this.activeUser = btn.dataset.switchUser;
-                await syncEngine.loginPartner(this.activeUser);
-                this.statusBanner = `👤 Perfil activo cambiado a ${this.activeUser === 'kevin' ? 'Kevin 💻' : 'Analy 👩🏻‍🍳'}.`;
+                const res = await syncEngine.loginPartner(this.activeUser);
+                this.statusBanner = `👤 Perfil activo cambiado a ${this.activeUser === 'kevin' ? 'Kevin 💻' : 'Analy 👩🏻‍🍳'}. ${res.ok ? '🟢 Sincronizado en la nube.' : ''}`;
                 this.render();
                 this.bindEvents();
             });
