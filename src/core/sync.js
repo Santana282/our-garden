@@ -1,4 +1,4 @@
-const DEFAULT_SUPABASE_URL = 'https://gxbuwjtiurgxtzjmwgeg.supabase.com';
+const DEFAULT_SUPABASE_URL = 'https://gxbuwjtiurgxtzjmwgeg.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'sb_publishable_Bvhc4UImRIZ6S7i5vRxQHw_XcG0DagF';
 const DEFAULT_SPACE_ID = 'kevin-analy-22072026';
 
