@@ -1,3 +1,5 @@
+import { syncEngine } from '../core/sync.js';
+
 const INITIAL_SUNFLOWERS = [
     {
         id: 'girasol-1',
@@ -102,24 +104,24 @@ const INITIAL_SUNFLOWERS = [
         stage: 'Etapa 5 • Girasol del Horizonte',
         title: 'Plan de Hogar Compartido, Enología y Metas 2026-2027',
         date: '2026-11-04',
-        description: 'Construcción de acuerdos sobre dónde vivir a futuro (Orizaba, Puebla o punto medio), proyectos de emprendimiento gastronómico/tecnológico y viajes próximos.',
-        kevinPerspective: 'Quiero construir un patrimonio sólido para los dos, aprender de ti sobre vinos y Enología, vernos en diciembre (Pachuca/CDMX) y en verano ir a Puebla.',
-        analyPerspective: 'Me ilusiona celebrar nuestros logros con un Cabernet Sauvignon o Merlot, titularnos, apoyar los proyectos y encontrar un hogar donde ambos estemos de acuerdo y cerca de la familia.',
+        description: 'Construcción de acuerdos sobre dónde vivir a futuro (Orizaba, Puebla o punto medio con clima fresco), fondo en Revolut, emprendimiento gastronómico/tecnológico y viajes próximos.',
+        kevinPerspective: 'Quiero construir un patrimonio sólido para los dos sin pagar renta innecesaria, aprender de ti sobre vinos y Enología, vernos en diciembre (Pachuca/CDMX) y en verano ir a Puebla.',
+        analyPerspective: 'Me ilusiona celebrar nuestros logros con un Cabernet Sauvignon o Merlot, que este año conozcas a mi familia, que despeguen nuestros proyectos y armar nuestro hogar en común acuerdo.',
         kevinEmotions: 'Entusiasmo emprendedor, compromiso a largo plazo y curiosidad por el mundo gastronómico de Analy.',
         analyEmotions: 'Ilusión compartida, orgullo académico y deseo de cercanía familiar y climas frescos.',
         psychInsight: 'Planificar metas a mediano plazo funciona mejor cuando se acompaña de pequeños rituales cercanos (citas, catas de vino y escapadas confirmadas).',
-        agreements: 'Decidir juntos nuestro futuro hogar respetando la opinión de ambos y celebrar cada avance con una cata de vino guiada por Analy.',
+        agreements: 'Decidir juntos nuestro futuro hogar respetando la opinión de ambos e ir cumpliendo paso a paso nuestra lista de objetivos.',
         repairActions: [
-            { id: 'e1', text: 'Organizar escapada de diciembre (CDMX / Pachuca) y vacaciones de julio-agosto en Puebla', done: false },
+            { id: 'e1', text: 'Organizar escapada de diciembre (CDMX / Pachuca) y conocer a la familia de Analy', done: false },
             { id: 'e2', text: 'Realizar nuestra primera cata formal de Cabernet Sauvignon y Merlot juntos', done: false }
         ],
-        waterCount: 3,
+        waterCount: 4,
         kevinResolved: false,
         analyResolved: false,
         status: 'En crecimiento activo',
         history: [
-            '21/10/2026: Plática sobre Enología, Cabernet Sauvignon y Merlot.',
-            '26/10/2026: Planeación de vernos en CDMX en diciembre y en Puebla en verano.'
+            '21/10/2026: Apertura de nuestra cuenta de ahorro en Revolut y plática sobre Enología.',
+            '25/10/2026: Creación de nuestra lista de objetivos actualizable (Pinky Promise).'
         ]
     }
 ];
@@ -131,15 +133,26 @@ export class GardenView extends HTMLElement {
         this.selectedId = null;
         this.activeAuthor = localStorage.getItem('our_garden_active_user') || 'kevin';
         this.filterStage = 'all';
+        this.boundRemotePull = () => {
+            this.sunflowers = JSON.parse(localStorage.getItem('our_garden_sunflowers_v2')) || INITIAL_SUNFLOWERS;
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     saveData() {
         localStorage.setItem('our_garden_sunflowers_v2', JSON.stringify(this.sunflowers));
+        syncEngine.syncNow();
     }
 
     getVitalitySummary() {
@@ -165,7 +178,6 @@ export class GardenView extends HTMLElement {
                 </p>
             </section>
 
-            <!-- Selector de identidad activa y resumen -->
             <div class="glass-card" style="margin-bottom:14px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label" style="margin-bottom:2px;">👤 INTERACTUANDO COMO:</span>
@@ -175,14 +187,13 @@ export class GardenView extends HTMLElement {
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <span class="card-label" style="margin-bottom:2px;">🌱 AVANCES DEL JARDÍN</span>
+                    <span class="card-label" style="margin-bottom:2px;">🌱 AVANCES SINCRONIZADOS</span>
                     <div style="font-size:0.86rem;font-weight:800;color:var(--accent-emerald);">
                         ${summary.resolved}/${summary.total} Acordados • 💧 ${summary.totalWater} Riegos
                     </div>
                 </div>
             </div>
 
-            <!-- Filtros y botón para sembrar nuevo girasol -->
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
                 <div style="display:flex;gap:6px;">
                     <button type="button" class="loc-chip ${this.filterStage === 'all' ? 'active' : ''}" data-filter="all">Todos (${this.sunflowers.length})</button>
@@ -194,7 +205,6 @@ export class GardenView extends HTMLElement {
                 </button>
             </div>
 
-            <!-- Formulario desplegable para sembrar un nuevo girasol -->
             <div id="new-sunflower-form-box" class="stage-card" style="display:none;margin-bottom:16px;">
                 <h3 style="color:var(--accent-sunflower);font-size:1rem;margin-bottom:10px;">🌱 Sembrar nueva experiencia o problema</h3>
                 <div style="display:flex;flex-direction:column;gap:10px;">
@@ -204,12 +214,11 @@ export class GardenView extends HTMLElement {
                     <input type="text" id="nf-agreement" placeholder="Propuesta de acuerdo o acción de cuidado" style="background:#060a17;border:1px solid var(--border-subtle);padding:10px;border-radius:10px;font-size:0.85rem;">
                     <div style="display:flex;gap:8px;justify-content:flex-end;">
                         <button type="button" class="loc-chip" id="cancel-new-sunflower">Cancelar</button>
-                        <button type="button" class="pill-action-btn" id="save-new-sunflower">🌻 Guardar en el Jardín</button>
+                        <button type="button" class="pill-action-btn" id="save-new-sunflower">🌻 Guardar y Sincronizar</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Cuadrícula de Girasoles -->
             <div style="display:flex;flex-direction:column;gap:12px;">
                 ${filtered.map(flower => {
                     const isBothAgreed = flower.kevinResolved && flower.analyResolved;
@@ -235,7 +244,6 @@ export class GardenView extends HTMLElement {
                 }).join('')}
             </div>
 
-            <!-- Modal Detallado de Cuidado y Resolución -->
             <div class="eco-modal-backdrop ${selectedFlower ? 'open' : ''}" id="garden-detail-modal">
                 ${selectedFlower ? this.renderFlowerDetailModal(selectedFlower) : ''}
             </div>
@@ -256,7 +264,6 @@ export class GardenView extends HTMLElement {
 
                 <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">${f.description}</p>
 
-                <!-- Perspectivas bilaterales -->
                 <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px;">
                     <div style="background:rgba(56,189,248,0.08);border-left:3px solid var(--accent-sky);padding:10px;border-radius:8px;font-size:0.83rem;">
                         <strong style="color:var(--accent-sky);">💻 Perspectiva y sentir de Kevin:</strong>
@@ -271,13 +278,11 @@ export class GardenView extends HTMLElement {
                     </div>
                 </div>
 
-                <!-- Interpretación constructiva (Sin diagnósticos clínicos ni culpas) -->
                 <div style="background:rgba(192,132,252,0.1);border:1px solid rgba(192,132,252,0.35);padding:10px;border-radius:10px;font-size:0.82rem;margin-bottom:12px;">
                     <strong style="color:var(--accent-purple);">🧭 Lectura Afectiva (Comunicación No Violenta):</strong>
                     <p style="margin-top:4px;">${f.psychInsight}</p>
                 </div>
 
-                <!-- Acuerdo explícito y acciones de reparación -->
                 <div style="background:rgba(52,211,153,0.08);border:1px solid var(--border-green);padding:10px;border-radius:10px;font-size:0.83rem;margin-bottom:12px;">
                     <strong style="color:var(--accent-emerald);">🤝 Acuerdo Alcanzado:</strong>
                     <p style="margin-top:4px;margin-bottom:8px;">${f.agreements}</p>
@@ -292,7 +297,6 @@ export class GardenView extends HTMLElement {
                     </div>
                 </div>
 
-                <!-- Añadir reflexión o actualizar cómo me siento hoy -->
                 <div style="margin-bottom:12px;">
                     <label style="font-size:0.76rem;color:var(--text-secondary);display:block;margin-bottom:4px;">
                         ✍️ Añadir reflexión o proponer acción como <strong>${this.activeAuthor === 'kevin' ? 'Kevin' : 'Analy'}</strong>:
@@ -303,7 +307,6 @@ export class GardenView extends HTMLElement {
                     </div>
                 </div>
 
-                <!-- Botones de Riego y Confirmación Bilateral de Resolución -->
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
                     <button type="button" class="pill-action-btn" id="btn-water-flower" style="justify-content:center;">
                         💧 Regar Girasol (${f.waterCount})
@@ -319,9 +322,8 @@ export class GardenView extends HTMLElement {
                         : 'ℹ️ Un problema solo se marca como resuelto cuando tanto Kevin como Analy confirman su acuerdo.'}
                 </div>
 
-                <!-- Historial de avances -->
                 <div style="border-top:1px solid var(--border-subtle);padding-top:8px;font-size:0.76rem;color:var(--text-secondary);">
-                    <strong>📜 Historial de cuidado:</strong>
+                    <strong>📜 Historial de cuidado (Sincronizado en tiempo real):</strong>
                     <ul style="margin-top:4px;padding-left:18px;">
                         ${f.history.map(h => `<li>${h}</li>`).join('')}
                     </ul>

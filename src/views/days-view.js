@@ -1,3 +1,5 @@
+import { syncEngine } from '../core/sync.js';
+
 const DEFAULT_CYCLE_DATA = {
     lastPeriodStart: '2026-10-18',
     lastPeriodEnd: '2026-10-23',
@@ -19,15 +21,26 @@ export class DaysView extends HTMLElement {
         super();
         this.cycleData = JSON.parse(localStorage.getItem('our_garden_cycle_v1')) || DEFAULT_CYCLE_DATA;
         this.activeViewer = localStorage.getItem('our_garden_active_user') || 'analy';
+        this.boundRemotePull = () => {
+            this.cycleData = JSON.parse(localStorage.getItem('our_garden_cycle_v1')) || DEFAULT_CYCLE_DATA;
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     saveCycle() {
         localStorage.setItem('our_garden_cycle_v1', JSON.stringify(this.cycleData));
+        syncEngine.syncNow();
     }
 
     calculateCyclePredictions() {
@@ -80,7 +93,6 @@ export class DaysView extends HTMLElement {
                 </p>
             </section>
 
-            <!-- Selector de modo de visualización y privacidad -->
             <div class="glass-card" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label">👤 CONSULTANDO COMO:</span>
@@ -94,13 +106,11 @@ export class DaysView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Aviso ético y médico obligatorio -->
             <div style="background:rgba(56,189,248,0.1);border:1px solid var(--border-cyan);padding:10px 12px;border-radius:12px;font-size:0.78rem;color:var(--text-secondary);margin-bottom:14px;">
                 ℹ️ <strong>Nota importante:</strong> Los cálculos mostrados son estimaciones orientativas basadas únicamente en las fechas registradas voluntariamente por Analy y pueden variar. No representan diagnósticos médicos.
             </div>
 
             ${restrictForKevin ? `
-                <!-- Vista reducida cuando Analy activa privacidad de detalles -->
                 <div class="stage-card" style="text-align:center;">
                     <div style="font-size:2.6rem;margin-bottom:8px;">💝</div>
                     <h3 style="color:var(--accent-rose);margin-bottom:8px;">Modo de Privacidad Activo</h3>
@@ -114,7 +124,6 @@ export class DaysView extends HTMLElement {
                     </div>
                 </div>
             ` : `
-                <!-- Tarjetas de Resumen del Ciclo -->
                 <div class="cards-grid-3">
                     <div class="glass-card">
                         <span class="card-label">🌸 DÍA DEL CICLO</span>
@@ -133,7 +142,6 @@ export class DaysView extends HTMLElement {
                     </div>
                 </div>
 
-                <!-- Fase Actual y Recomendación de Cuidado -->
                 <div class="stage-card" style="margin-top:12px;">
                     <div class="stage-title">${pred.phaseName}</div>
                     <p style="font-size:0.86rem;color:var(--text-primary);margin-bottom:12px;">${pred.phaseAdvice}</p>
@@ -145,7 +153,6 @@ export class DaysView extends HTMLElement {
                     </div>
                 </div>
 
-                <!-- Panel exclusivo de edición para Analy -->
                 ${isAnaly ? `
                     <div class="stage-card" style="border-color:var(--border-pink);">
                         <h3 style="color:var(--accent-rose);font-size:1rem;margin-bottom:10px;">👩🏻‍🍳 Panel Personal de Analy (Edición y Privacidad)</h3>
@@ -178,10 +185,9 @@ export class DaysView extends HTMLElement {
                         </div>
 
                         <button type="button" class="pill-action-btn" id="btn-save-cycle-dates" style="width:100%;justify-content:center;margin-bottom:14px;">
-                            💾 Actualizar Fechas y Cálculo
+                            💾 Actualizar Fechas y Sincronizar
                         </button>
 
-                        <!-- Registro voluntario de síntomas o notas -->
                         <div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
                             <strong style="font-size:0.84rem;color:var(--accent-sunflower-soft);">📝 Registrar síntoma, antojo o nota de hoy:</strong>
                             <div style="display:flex;gap:6px;margin-top:8px;">
@@ -192,7 +198,6 @@ export class DaysView extends HTMLElement {
                     </div>
                 ` : ''}
 
-                <!-- Bitácora de síntomas y notas registradas -->
                 <div class="stage-card">
                     <div class="stage-title">📋 Bitácora de Síntomas y Notas de Cuidado</div>
                     ${this.cycleData.symptomsLog.map(item => `

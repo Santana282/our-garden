@@ -1,3 +1,5 @@
+import { syncEngine } from '../core/sync.js';
+
 const INITIAL_DIARY_ENTRIES = [
     {
         id: 'entry-1',
@@ -18,9 +20,9 @@ const INITIAL_DIARY_ENTRIES = [
         author: 'analy',
         date: '2026-10-21',
         time: '22:54',
-        title: '🍷 Noche de Enología: Cabernet Sauvignon y Merlot',
-        content: 'Celebrar que somos jóvenes emprendedores con una buena copa de vino. Enología se volvió mi materia favorita desde que la conocí y me ilusiona enseñarte a catar mis favoritos: Cabernet Sauvignon y Merlot.',
-        tags: ['Gastronomía', 'Enología', 'Metas'],
+        title: '🍷 Noche de Enología y Cuenta Compartida en Revolut',
+        content: 'Celebrar que somos jóvenes emprendedores con una buena copa de vino y dar el paso de abrir nuestra cuenta en Revolut juntos. Enología se volvió mi materia favorita y me ilusiona enseñarte a catar Cabernet Sauvignon y Merlot.',
+        tags: ['Gastronomía', 'Enología', 'Revolut'],
         highlighted: true,
         sharedWithPartner: true,
         mediaUrl: ''
@@ -32,7 +34,7 @@ const INITIAL_DIARY_ENTRIES = [
         date: '2026-10-23',
         time: '21:58',
         title: '🚌 Nuestro Primer Fin de Semana Juntos en Orizaba',
-        content: 'El viaje pasando entre neblina y túneles por La Esperanza y Córdoba hasta vernos por fin en la terminal ADO de Orizaba. Adelantar exámenes para caminar juntos por el mercado, despedirnos de Nacho y Pimpon el 27 de octubre y quedarme guardando tu cobijita doblada bajo mi sudadera.',
+        content: 'El viaje pasando entre neblina y túneles por La Esperanza y Córdoba hasta vernos por fin en la terminal ADO de Orizaba. Adelantar exámenes para caminar juntos por el mercado, disfrutar nuestro domingo de novios con frapecito y besitos el 25 de octubre, despedirnos de Nacho y Pimpon el 27 de octubre y quedarme guardando tu cobijita doblada bajo mi sudadera.',
         tags: ['Orizaba', 'Primer Encuentro', 'Cobijita'],
         highlighted: true,
         sharedWithPartner: true,
@@ -57,18 +59,29 @@ export class DiaryView extends HTMLElement {
     constructor() {
         super();
         this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
-        this.activeSpace = 'shared'; // 'kevin' | 'analy' | 'shared'
+        this.activeSpace = 'shared';
         this.activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
         this.filterDate = '';
+        this.boundRemotePull = () => {
+            this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     saveEntries() {
         localStorage.setItem('our_garden_diary_v1', JSON.stringify(this.entries));
+        syncEngine.syncNow();
     }
 
     getVisibleEntries() {
@@ -92,11 +105,10 @@ export class DiaryView extends HTMLElement {
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📖 Nuestros Diarios e Historia</h1>
                 <p class="hero-subtitle">
-                    Tres espacios para guardar reflexiones personales y recuerdos compartidos respetando nuestra privacidad.
+                    Tres espacios sincronizados en tiempo real para guardar reflexiones personales y recuerdos compartidos.
                 </p>
             </section>
 
-            <!-- Selector de Autor Activo y Filtro de Fecha -->
             <div class="glass-card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label">👤 ESCRIBIENDO COMO:</span>
@@ -114,7 +126,6 @@ export class DiaryView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Pestañas de los 3 Espacios del Diario -->
             <div class="cards-grid-3" style="margin-bottom:14px;">
                 <button type="button" class="element-btn-card ${this.activeSpace === 'kevin' ? 'water' : ''}" data-space="kevin">
                     <span class="card-label">💻 ESPACIO 1</span>
@@ -130,7 +141,6 @@ export class DiaryView extends HTMLElement {
                 </button>
             </div>
 
-            <!-- Formulario para Nueva Entrada -->
             <div class="stage-card" style="margin-bottom:16px;">
                 <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:10px;">
                     ✍️ Nueva entrada en ${this.activeSpace === 'shared' ? 'Nuestro Diario Compartido' : (this.activeSpace === 'kevin' ? 'el Diario de Kevin' : 'el Diario de Analy')}
@@ -147,12 +157,11 @@ export class DiaryView extends HTMLElement {
                             <input type="checkbox" id="entry-share-chk" ${this.activeSpace === 'shared' ? 'checked disabled' : ''}>
                             <span>Compartir esta entrada con mi pareja</span>
                         </label>
-                        <button type="button" class="pill-action-btn" id="btn-save-entry">📖 Guardar Recuerdo</button>
+                        <button type="button" class="pill-action-btn" id="btn-save-entry">📖 Guardar y Sincronizar</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Lista Cronológica de Entradas -->
             <div style="display:flex;flex-direction:column;gap:12px;">
                 ${list.length === 0 ? `
                     <div class="glass-card" style="padding:24px;color:var(--text-secondary);">

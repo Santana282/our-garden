@@ -1,3 +1,5 @@
+import { syncEngine } from '../core/sync.js';
+
 const INITIAL_KIT_ITEMS = [
     {
         id: 'kit-1',
@@ -18,7 +20,7 @@ const INITIAL_KIT_ITEMS = [
         category: 'Para Kevin 💻',
         forWhom: 'Kevin',
         title: 'Cuando sientas que te hundes o que tu mirada aleja',
-        message: 'Como te dijo Analy el 30 de octubre: es nuestra primera vez siendo humanos y todos tenemos luz. Con ella no tienes que fingir; ella conoce al hombre noble y leal que eres por dentro.'
+        message: 'Como te dijo Analy el 30 de octubre: es nuestra primera vez siendo humanos y todos tenemos luz. Con ella no tienes que fingir; ella conoce al hombre noble, compañero y bueno que eres por dentro.'
     },
     {
         id: 'kit-4',
@@ -33,11 +35,21 @@ export class BotiquinView extends HTMLElement {
     constructor() {
         super();
         this.items = JSON.parse(localStorage.getItem('our_garden_botiquin_v1')) || INITIAL_KIT_ITEMS;
+        this.boundRemotePull = () => {
+            this.items = JSON.parse(localStorage.getItem('our_garden_botiquin_v1')) || INITIAL_KIT_ITEMS;
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     render() {
@@ -49,7 +61,6 @@ export class BotiquinView extends HTMLElement {
                 </p>
             </section>
 
-            <!-- Botón de Emergencia Afectiva (Señal Girasol) -->
             <div class="stage-card" style="text-align:center;border-color:var(--border-gold);margin-bottom:16px;">
                 <div style="font-size:2.4rem;margin-bottom:6px;">🌻</div>
                 <h3 style="color:var(--accent-sunflower);margin-bottom:6px;">Activar Señal de Calma y Apapacho</h3>
@@ -64,7 +75,6 @@ export class BotiquinView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Cápsulas de Apoyo -->
             <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
                 ${this.items.map(item => `
                     <div class="stage-card" style="margin-top:0;">
@@ -75,13 +85,12 @@ export class BotiquinView extends HTMLElement {
                 `).join('')}
             </div>
 
-            <!-- Agregar nueva cápsula al Botiquín -->
             <div class="stage-card">
                 <h3 style="color:var(--accent-sky);font-size:0.96rem;margin-bottom:10px;">➕ Guardar nuevo mensaje de apoyo en el Botiquín</h3>
                 <div style="display:flex;flex-direction:column;gap:8px;">
                     <input type="text" id="kit-title" placeholder="Título del recordatorio (ej. Para días de exámenes)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.84rem;">
                     <textarea id="kit-msg" rows="2" placeholder="Mensaje reconfortante..." style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.84rem;"></textarea>
-                    <button type="button" class="pill-action-btn" id="btn-save-kit" style="align-self:flex-end;">💖 Guardar en Botiquín</button>
+                    <button type="button" class="pill-action-btn" id="btn-save-kit" style="align-self:flex-end;">💖 Guardar y Sincronizar</button>
                 </div>
             </div>
         `;
@@ -108,6 +117,7 @@ export class BotiquinView extends HTMLElement {
                 message
             });
             localStorage.setItem('our_garden_botiquin_v1', JSON.stringify(this.items));
+            syncEngine.syncNow();
             this.render();
             this.bindEvents();
         });
