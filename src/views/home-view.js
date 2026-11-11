@@ -160,10 +160,29 @@ export class HomeView extends HTMLElement {
         return list[dayOfYear % list.length];
     }
 
-    // Cálculo astronómico real de la fase lunar (Ciclo sinódico de 29.530588 días)
+    getNextMonthlyAnniversary() {
+        const now = new Date();
+        let targetYear = now.getFullYear();
+        let targetMonth = now.getMonth();
+
+        if (now.getDate() === 22) {
+            return '¡Hoy es nuestro Día 22! 🌻💖';
+        }
+        if (now.getDate() > 22) {
+            targetMonth += 1;
+            if (targetMonth > 11) {
+                targetMonth = 0;
+                targetYear += 1;
+            }
+        }
+        const next22 = new Date(targetYear, targetMonth, 22, 0, 0, 0);
+        const diffDays = Math.ceil((next22 - now) / 86400000);
+        return `Día 22 en ${diffDays}d • Presente Activo 💖`;
+    }
+
     getRealAstronomicalTelemetry() {
         const now = new Date();
-        const lp = 2551443; // Duración media del ciclo lunar en segundos
+        const lp = 2551443;
         const newMoonRef = new Date('2026-01-18T19:52:00Z');
         const phaseSecs = ((now.getTime() - newMoonRef.getTime()) / 1000) % lp;
         const normalized = (phaseSecs < 0 ? phaseSecs + lp : phaseSecs) / lp;
@@ -196,15 +215,13 @@ export class HomeView extends HTMLElement {
                 this.updateNasaBadge();
                 return;
             }
-            const res = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+            const res = await fetch('[https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY](https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY)');
             if (!res.ok) return;
             const data = await res.json();
             this.nasaData = { title: data.title, date: data.date };
             sessionStorage.setItem('our_garden_nasa_apod', JSON.stringify(this.nasaData));
             this.updateNasaBadge();
-        } catch (e) {
-            // Funciona sin problema en modo offline con cálculo astronómico local
-        }
+        } catch (e) {}
     }
 
     updateNasaBadge() {
@@ -239,6 +256,7 @@ export class HomeView extends HTMLElement {
         const todayLight = this.getTodayPhrase();
         const isFav = (this.lightState.favorites || []).includes(todayLight.id);
         const astro = this.getRealAstronomicalTelemetry();
+        const next22Label = this.getNextMonthlyAnniversary();
         const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
 
         this.innerHTML = `
@@ -260,8 +278,8 @@ export class HomeView extends HTMLElement {
                     <div class="card-value emerald" id="home-vitality-val">${vit.pct}% (${vit.completed}/${vit.totalActions})</div>
                 </div>
                 <div class="glass-card">
-                    <span class="card-label">👩‍❤️‍👨 PRÓXIMO ENCUENTRO</span>
-                    <div class="card-value rose">Presente<br>Activo 💖</div>
+                    <span class="card-label">📅 ANIVERSARIO MENSUAL</span>
+                    <div class="card-value rose" style="font-size:0.82rem;">${next22Label}</div>
                 </div>
             </div>
 
@@ -293,7 +311,7 @@ export class HomeView extends HTMLElement {
                 </div>
 
                 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                    <input type="text" id="inp-light-reflection" placeholder="Añadir nuestra reflexión personal sobre esta frase (${activeUser === 'kevin' ? 'Kevin' : 'Analy'})..." style="flex:1;min-width:180px;background:#060a17;border:1px solid var(--border-subtle);padding:7px 10px;border-radius:8px;font-size:0.8rem;">
+                    <input type="text" id="inp-light-reflection" placeholder="Añadir nuestra reflexión personal (${activeUser === 'kevin' ? 'Kevin' : 'Analy'})..." style="flex:1;min-width:180px;background:#060a17;border:1px solid var(--border-subtle);padding:7px 10px;border-radius:8px;font-size:0.8rem;">
                     <button type="button" class="pill-action-btn" id="btn-save-light-ref" style="padding:6px 12px;font-size:0.76rem;">💬 Guardar</button>
                     <button type="button" class="loc-chip" id="btn-share-light" style="font-size:0.75rem;">📲 Compartir</button>
                 </div>
@@ -358,7 +376,6 @@ export class HomeView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Modal Multipropósito -->
             <div class="eco-modal-backdrop" id="home-modal">
                 <div class="eco-modal-box" id="home-modal-content"></div>
             </div>
@@ -468,7 +485,7 @@ export class HomeView extends HTMLElement {
                     </div>
                 ` : ''}
                 <div style="display:flex;flex-direction:column;gap:8px;">
-                    ${all.map((p, idx) => `
+                    ${all.map((p) => `
                         <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;font-size:0.8rem;">
                             <span style="color:var(--accent-sky);font-weight:700;">${p.category} • ${p.author}</span>
                             <p style="font-style:italic;margin:4px 0;">"${p.quote}"</p>

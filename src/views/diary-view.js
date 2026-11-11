@@ -12,7 +12,8 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Flores Amarillas', 'Código', 'Detalle'],
         highlighted: true,
         sharedWithPartner: true,
-        mediaUrl: ''
+        photoUrl: '',
+        audioUrl: ''
     },
     {
         id: 'entry-2',
@@ -25,7 +26,8 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Gastronomía', 'Enología', 'Revolut'],
         highlighted: true,
         sharedWithPartner: true,
-        mediaUrl: ''
+        photoUrl: '',
+        audioUrl: ''
     },
     {
         id: 'entry-3',
@@ -38,7 +40,8 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Orizaba', 'Primer Encuentro', 'Cobijita'],
         highlighted: true,
         sharedWithPartner: true,
-        mediaUrl: ''
+        photoUrl: '',
+        audioUrl: ''
     },
     {
         id: 'entry-4',
@@ -51,7 +54,8 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Reflexión', 'Confianza'],
         highlighted: true,
         sharedWithPartner: true,
-        mediaUrl: ''
+        photoUrl: '',
+        audioUrl: ''
     }
 ];
 
@@ -62,6 +66,9 @@ export class DiaryView extends HTMLElement {
         this.activeSpace = 'shared';
         this.activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
         this.filterDate = '';
+        this.pendingPhotoUrl = '';
+        this.pendingAudioUrl = '';
+        this.uploadStatus = '';
         this.boundRemotePull = () => {
             this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
             this.render();
@@ -105,7 +112,7 @@ export class DiaryView extends HTMLElement {
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📖 Nuestros Diarios e Historia</h1>
                 <p class="hero-subtitle">
-                    Tres espacios sincronizados en tiempo real para guardar reflexiones personales y recuerdos compartidos.
+                    Tres espacios sincronizados con soporte para fotografías y notas de voz en la nube.
                 </p>
             </section>
 
@@ -141,6 +148,7 @@ export class DiaryView extends HTMLElement {
                 </button>
             </div>
 
+            <!-- Formulario con subida de Fotos y Audios a Supabase Storage -->
             <div class="stage-card" style="margin-bottom:16px;">
                 <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:10px;">
                     ✍️ Nueva entrada en ${this.activeSpace === 'shared' ? 'Nuestro Diario Compartido' : (this.activeSpace === 'kevin' ? 'el Diario de Kevin' : 'el Diario de Analy')}
@@ -148,10 +156,24 @@ export class DiaryView extends HTMLElement {
                 <div style="display:flex;flex-direction:column;gap:8px;">
                     <input type="text" id="entry-title" placeholder="Título del recuerdo o reflexión..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.86rem;">
                     <textarea id="entry-content" rows="3" placeholder="Escribe aquí tu entrada..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.85rem;"></textarea>
+                    
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <input type="text" id="entry-tags" placeholder="Etiquetas (ej. Orizaba, Vinos)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.8rem;">
-                        <input type="url" id="entry-media" placeholder="Link a foto/audio externo (opcional)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.8rem;">
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:8px;">
+                            📷 Subir Fotografía
+                            <input type="file" id="inp-diary-photo" accept="image/*" style="display:none;">
+                        </label>
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:8px;">
+                            🎙️ Subir Audio / Voz
+                            <input type="file" id="inp-diary-audio" accept="audio/*" style="display:none;">
+                        </label>
                     </div>
+
+                    ${this.uploadStatus ? `
+                        <div style="font-size:0.76rem;color:var(--accent-emerald);padding:4px 6px;">${this.uploadStatus}</div>
+                    ` : ''}
+
+                    <input type="text" id="entry-tags" placeholder="Etiquetas separadas por coma (ej. Orizaba, Vinos, Cita)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.8rem;">
+
                     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;">
                         <label style="font-size:0.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;">
                             <input type="checkbox" id="entry-share-chk" ${this.activeSpace === 'shared' ? 'checked disabled' : ''}>
@@ -183,11 +205,19 @@ export class DiaryView extends HTMLElement {
                             ` : ''}
                         </div>
                         <p style="font-size:0.86rem;color:var(--text-primary);white-space:pre-line;margin-bottom:10px;">${item.content}</p>
-                        ${item.mediaUrl ? `
+                        
+                        ${item.photoUrl ? `
                             <div style="margin-bottom:10px;">
-                                <a href="${item.mediaUrl}" target="_blank" rel="noopener" class="loc-chip active" style="text-decoration:none;display:inline-block;">🔗 Ver multimedia vinculada</a>
+                                <img src="${item.photoUrl}" alt="${item.title}" loading="lazy" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid var(--border-gold);">
                             </div>
                         ` : ''}
+
+                        ${item.audioUrl ? `
+                            <div style="margin-bottom:10px;">
+                                <audio controls src="${item.audioUrl}" style="width:100%;height:38px;"></audio>
+                            </div>
+                        ` : ''}
+
                         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border-subtle);padding-top:8px;">
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 ${(item.tags || []).map(t => `<span class="loc-chip" style="font-size:0.68rem;">#${t}</span>`).join('')}
@@ -234,11 +264,44 @@ export class DiaryView extends HTMLElement {
             this.bindEvents();
         });
 
+        this.querySelector('#inp-diary-photo')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            this.uploadStatus = '⏳ Subiendo fotografía a nuestra bóveda en Supabase...';
+            this.render();
+            this.bindEvents();
+            const res = await syncEngine.uploadMediaFile(file, 'photos');
+            if (res.ok) {
+                this.pendingPhotoUrl = res.url;
+                this.uploadStatus = `✅ Fotografía "${res.name}" lista para guardar en la entrada.`;
+            } else {
+                this.uploadStatus = `⚠️ ${res.message}`;
+            }
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#inp-diary-audio')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            this.uploadStatus = '⏳ Subiendo nota de voz a nuestra bóveda en Supabase...';
+            this.render();
+            this.bindEvents();
+            const res = await syncEngine.uploadMediaFile(file, 'audios');
+            if (res.ok) {
+                this.pendingAudioUrl = res.url;
+                this.uploadStatus = `✅ Audio "${res.name}" listo para guardar en la entrada.`;
+            } else {
+                this.uploadStatus = `⚠️ ${res.message}`;
+            }
+            this.render();
+            this.bindEvents();
+        });
+
         this.querySelector('#btn-save-entry')?.addEventListener('click', () => {
             const title = this.querySelector('#entry-title')?.value.trim();
             const content = this.querySelector('#entry-content')?.value.trim();
             const tagsRaw = this.querySelector('#entry-tags')?.value.trim();
-            const mediaUrl = this.querySelector('#entry-media')?.value.trim();
             const shareChk = this.querySelector('#entry-share-chk')?.checked;
 
             if (!title || !content) return;
@@ -255,10 +318,14 @@ export class DiaryView extends HTMLElement {
                 tags: tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : ['Recuerdo'],
                 highlighted: false,
                 sharedWithPartner: this.activeSpace === 'shared' ? true : Boolean(shareChk),
-                mediaUrl: mediaUrl || ''
+                photoUrl: this.pendingPhotoUrl || '',
+                audioUrl: this.pendingAudioUrl || ''
             };
 
             this.entries.unshift(newEntry);
+            this.pendingPhotoUrl = '';
+            this.pendingAudioUrl = '';
+            this.uploadStatus = '';
             this.saveEntries();
             this.render();
             this.bindEvents();

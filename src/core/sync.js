@@ -1,6 +1,7 @@
-const OFFICIAL_SUPABASE_URL = 'https://gxbuwjtiurgxtzjmwgeg.supabase.co';
+const OFFICIAL_SUPABASE_URL = '[https://gxbuwjtiurgxtzjmwgeg.supabase.co](https://gxbuwjtiurgxtzjmwgeg.supabase.co)';
 const OFFICIAL_SUPABASE_KEY = 'sb_publishable_Bvhc4UImRIZ6S7i5vRxQHw_XcG0DagF';
 const OFFICIAL_SPACE_ID = 'kevin-analy-22072026';
+const OFFICIAL_BUCKET = 'garden-media';
 
 const SYNC_KEYS = [
     'jardin_stages_v1',
@@ -98,6 +99,43 @@ export class SyncEngine {
         localStorage.setItem('our_garden_auth_session', JSON.stringify(this.session));
         await this.syncNow();
         return { ok: true };
+    }
+
+    // Subida directa de fotografías, audios y documentos a Supabase Storage (Sin inflar localStorage)
+    async uploadMediaFile(file, folder = 'diary') {
+        if (!file) return { ok: false, message: 'No se seleccionó archivo.' };
+        if (!navigator.onLine) {
+            return { ok: false, message: 'Necesitas conexión a internet para subir fotos o audios a la nube.' };
+        }
+
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = `${folder}/${Date.now()}_${safeName}`;
+        const uploadUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/${OFFICIAL_BUCKET}/${filePath}`;
+
+        try {
+            const res = await fetch(uploadUrl, {
+                method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: this.getHeaders({
+                    'Content-Type': file.type || 'application/octet-stream',
+                    'x-upsert': 'true'
+                }),
+                body: file
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const publicUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/public/${OFFICIAL_BUCKET}/${filePath}`;
+            return { ok: true, url: publicUrl, name: file.name };
+        } catch (err) {
+            return {
+                ok: false,
+                message: 'Para subir archivos, ejecuta primero el bloque SQL de Storage (garden-media) en Supabase.'
+            };
+        }
     }
 
     collectLocalPayload() {

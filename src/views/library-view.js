@@ -1,4 +1,5 @@
 import { syncEngine } from '../core/sync.js';
+import { mediaStorage } from '../core/media-storage.js';
 
 export const LIBRARY_CATEGORIES = [
     'Todas',
@@ -139,23 +140,45 @@ export class LibraryView extends HTMLElement {
         super();
         const saved = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
         this.books = saved.books || INITIAL_BOOKS;
+        this.customCategories = saved.customCategories || [];
         this.readingHistory = saved.readingHistory || [];
         this.selectedCategory = 'Todas';
         this.activeBookId = null;
         this.activeChapterIndex = 0;
         this.readerFontSize = saved.readerFontSize || 1.02;
-        this.readerTheme = saved.readerTheme || 'night'; // 'night' | 'sepia' | 'soft'
+        this.readerTheme = saved.readerTheme || 'night';
         this.showUploadForm = false;
+        this.pendingCloudFileUrl = '';
+        this.pendingCloudFileFormat = '';
+        this.uploadStatusText = '';
+
+        this.boundRemotePull = () => {
+            const refreshed = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
+            if (refreshed.books) this.books = refreshed.books;
+            if (refreshed.customCategories) this.customCategories = refreshed.customCategories;
+            this.render();
+            this.bindEvents();
+        };
     }
 
     connectedCallback() {
         this.render();
         this.bindEvents();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+    }
+
+    getAllCategories() {
+        return [...new Set([...LIBRARY_CATEGORIES, ...(this.customCategories || [])])];
     }
 
     saveLibrary() {
         localStorage.setItem('our_garden_library_v1', JSON.stringify({
             books: this.books,
+            customCategories: this.customCategories,
             readingHistory: this.readingHistory,
             readerFontSize: this.readerFontSize,
             readerTheme: this.readerTheme
@@ -171,16 +194,16 @@ export class LibraryView extends HTMLElement {
     render() {
         const filtered = this.getFilteredBooks();
         const activeBook = this.books.find(b => b.id === this.activeBookId);
+        const allCategories = this.getAllCategories();
 
         this.innerHTML = `
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📚 Biblioteca del Amor</h1>
                 <p class="hero-subtitle">
-                    Nuestra estantería nocturna de poesía, cartas, filosofía y obras compartidas para leer juntos.
+                    Nuestra estantería nocturna de poesía, cartas, filosofía y documentos privados en la nube.
                 </p>
             </section>
 
-            <!-- Barra de acciones y subida legal de libros/poemas -->
             <div class="glass-card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label" style="margin-bottom:2px;">🕯️ ESTANTERÍA NOCTURNA</span>
@@ -189,35 +212,35 @@ export class LibraryView extends HTMLElement {
                     </div>
                 </div>
                 <button type="button" class="pill-action-btn" id="btn-toggle-upload-book">
-                    ➕ Adjuntar Libro / Poema
+                    ➕ Subir Libro / Poema / PDF
                 </button>
             </div>
 
-            <!-- Formulario para adjuntar libros o poemas propios/legales (TXT, MD, PDF, EPUB, Foto) -->
+            <!-- Panel de subida con soporte para Supabase Storage -->
             <div class="stage-card" id="upload-book-panel" style="display:${this.showUploadForm ? 'block' : 'none'};margin-top:0;margin-bottom:14px;border-color:var(--border-gold);">
-                <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:8px;">📎 Adjuntar Obra, Poema o Archivo Autorizado</h3>
+                <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:8px;">📎 Subir Obra, Poema, PDF, EPUB o Fotografía de Página</h3>
                 <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:10px;">
-                    Respeta los derechos de autor: adjunta textos propios, obras de dominio público o enlaces legales a documentos PDF/EPUB/Imágenes.
+                    Los documentos y fotos de páginas se guardan en nuestra bóveda privada de Supabase Storage conservando la atribución de autoría.
                 </p>
                 <div style="display:flex;flex-direction:column;gap:8px;">
-                    <input type="text" id="up-book-title" placeholder="Título del libro o poema" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
+                    <input type="text" id="up-book-title" placeholder="Título del libro, poema o escrito" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <input type="text" id="up-book-author" placeholder="Autor(a) y atribución" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
                         <select id="up-book-cat" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;">
-                            ${LIBRARY_CATEGORIES.filter(c => c !== 'Todas').map(c => `<option value="${c}">${c}</option>`).join('')}
+                            ${allCategories.filter(c => c !== 'Todas').map(c => `<option value="${c}">${c}</option>`).join('')}
                         </select>
                     </div>
-                    <input type="text" id="up-book-desc" placeholder="Breve descripción o dedicatoria" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
-                    <textarea id="up-book-body" rows="4" placeholder="Escribe o pega aquí el poema/capítulo, o carga un archivo .TXT abajo..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;"></textarea>
-                    
+                    <input type="text" id="up-book-desc" placeholder="Breve descripción o por qué nos gusta esta obra" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
+                    <textarea id="up-book-body" rows="4" placeholder="Escribe o pega el texto/poema aquí, o sube un archivo abajo..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;"></textarea>
+
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;">
-                        <label class="loc-chip" style="cursor:pointer;text-align:center;padding:8px;">
-                            📄 Cargar archivo (.txt, .pdf, .epub, foto)
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:9px;">
+                            ☁️ Subir Archivo (.pdf, .epub, .txt, foto de página)
                             <input type="file" id="up-book-file" accept=".txt,.md,.pdf,.epub,image/*" style="display:none;">
                         </label>
-                        <input type="url" id="up-book-url" placeholder="O enlace legal externo (PDF/Web)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px;border-radius:10px;font-size:0.8rem;">
+                        <input type="url" id="up-book-url" value="${this.pendingCloudFileUrl}" placeholder="O enlace legal externo (PDF/Web)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px;border-radius:10px;font-size:0.8rem;">
                     </div>
-                    <div id="up-file-status" style="font-size:0.76rem;color:var(--accent-emerald);"></div>
+                    <div id="up-file-status" style="font-size:0.78rem;color:var(--accent-emerald);">${this.uploadStatusText}</div>
 
                     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
                         <button type="button" class="loc-chip" id="btn-cancel-upload-book">Cancelar</button>
@@ -226,26 +249,24 @@ export class LibraryView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Carrusel de las 10 Categorías -->
+            <!-- Carrusel de Categorías -->
             <div class="location-bar" style="display:flex;margin-bottom:14px;padding-bottom:6px;">
-                ${LIBRARY_CATEGORIES.map(cat => `
+                ${allCategories.map(cat => `
                     <button type="button" class="loc-chip ${this.selectedCategory === cat ? 'active' : ''}" data-lib-cat="${cat}">
                         ${cat}
                     </button>
                 `).join('')}
             </div>
 
-            <!-- Estantería de Libros con Portadas Iluminadas -->
+            <!-- Estantería de Libros -->
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
                 ${filtered.map(book => `
                     <article class="stage-card" style="margin-top:0;display:flex;gap:12px;align-items:stretch;">
-                        <!-- Portada Iluminada -->
                         <div style="width:78px;flex-shrink:0;background:${book.coverGradient || 'linear-gradient(135deg,#f59e0b,#78350f)'};border-radius:12px;border:1px solid rgba(255,255,255,0.28);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,0.6);">
                             <div style="font-size:2.1rem;">${book.coverEmoji || '📖'}</div>
                             <span style="font-size:0.62rem;font-weight:800;color:#fff;margin-top:6px;line-height:1.2;">${book.category}</span>
                         </div>
 
-                        <!-- Detalles de la Obra -->
                         <div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">
                             <div>
                                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px;">
@@ -277,7 +298,7 @@ export class LibraryView extends HTMLElement {
                 `).join('')}
             </div>
 
-            <!-- Modal Lector Cómodo para Teléfonos -->
+            <!-- Modal Lector Móvil -->
             <div class="eco-modal-backdrop ${activeBook ? 'open' : ''}" id="library-reader-modal">
                 ${activeBook ? this.renderReaderModal(activeBook) : ''}
             </div>
@@ -287,6 +308,7 @@ export class LibraryView extends HTMLElement {
     renderReaderModal(book) {
         const chapters = book.chapters || [{ title: 'Texto Completo', body: '' }];
         const currentChap = chapters[this.activeChapterIndex] || chapters[0];
+        const isPageImage = book.externalUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(book.externalUrl);
 
         const themeStyles = {
             night: 'background:#070b18;color:#f8fafc;border:1px solid rgba(251,191,36,0.35);',
@@ -296,7 +318,6 @@ export class LibraryView extends HTMLElement {
 
         return `
             <div class="eco-modal-box" style="max-width:560px;max-height:90vh;overflow-y:auto;${themeStyles[this.readerTheme] || themeStyles.night}">
-                <!-- Barra Superior del Lector -->
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;border-bottom:1px solid rgba(255,255,255,0.12);padding-bottom:10px;margin-bottom:12px;">
                     <div>
                         <span style="font-size:0.7rem;color:var(--accent-sky);font-weight:700;">${book.author} • ${book.license || 'Atribución conservada'}</span>
@@ -305,7 +326,6 @@ export class LibraryView extends HTMLElement {
                     <button type="button" class="loc-chip" id="btn-close-reader">✕ Cerrar</button>
                 </div>
 
-                <!-- Controles Ergonómicos de Lectura -->
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:12px;background:rgba(0,0,0,0.3);padding:8px 10px;border-radius:10px;">
                     <div style="display:flex;gap:4px;">
                         <button type="button" class="loc-chip" id="btn-font-dec">A-</button>
@@ -318,7 +338,6 @@ export class LibraryView extends HTMLElement {
                     </button>
                 </div>
 
-                <!-- Selector de Capítulos -->
                 ${chapters.length > 1 ? `
                     <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:4px;">
                         ${chapters.map((ch, idx) => `
@@ -329,20 +348,25 @@ export class LibraryView extends HTMLElement {
                     </div>
                 ` : ''}
 
-                <!-- Cuerpo de Lectura -->
                 <div style="padding:14px 12px;border-radius:12px;background:rgba(0,0,0,0.25);margin-bottom:14px;">
                     <h4 style="color:var(--accent-sunflower-soft);margin-bottom:10px;font-size:1rem;">${currentChap.title}</h4>
                     <div style="font-size:${this.readerFontSize}rem;line-height:1.85;white-space:pre-line;font-family:Georgia, 'Times New Roman', serif;">${currentChap.body}</div>
+
+                    ${isPageImage ? `
+                        <div style="margin-top:12px;">
+                            <img src="${book.externalUrl}" alt="Página de ${book.title}" style="max-width:100%;border-radius:10px;border:1px solid var(--border-subtle);">
+                        </div>
+                    ` : ''}
+
                     ${book.externalUrl ? `
                         <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.12);">
                             <a href="${book.externalUrl}" target="_blank" rel="noopener" class="pill-action-btn" style="text-decoration:none;display:inline-flex;">
-                                🔗 Abrir Documento / Fuente Legal Externa (${book.fileFormat || 'Web/PDF'})
+                                🔗 Abrir Archivo Completo (${book.fileFormat || 'PDF / EPUB / Imagen'})
                             </a>
                         </div>
                     ` : ''}
                 </div>
 
-                <!-- Notas Personales y Compartir Fragmento -->
                 <div style="margin-bottom:10px;">
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
                         <input type="text" id="inp-book-note" placeholder="Agregar nota personal o pensamiento sobre esta obra..." style="flex:1;background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:8px;font-size:0.8rem;color:#fff;">
@@ -369,33 +393,47 @@ export class LibraryView extends HTMLElement {
 
         this.querySelector('#btn-cancel-upload-book')?.addEventListener('click', () => {
             this.showUploadForm = false;
+            this.pendingCloudFileUrl = '';
+            this.uploadStatusText = '';
             this.render();
             this.bindEvents();
         });
 
         const fileInput = this.querySelector('#up-book-file');
-        fileInput?.addEventListener('change', (e) => {
+        fileInput?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            const statusEl = this.querySelector('#up-file-status');
-            const bodyArea = this.querySelector('#up-book-body');
             const ext = file.name.split('.').pop().toLowerCase();
+            this.pendingCloudFileFormat = ext.toUpperCase();
 
             if (ext === 'txt' || ext === 'md') {
                 const reader = new FileReader();
                 reader.onload = () => {
+                    const bodyArea = this.querySelector('#up-book-body');
                     if (bodyArea) bodyArea.value = String(reader.result);
-                    if (statusEl) statusEl.textContent = `✅ Texto extraído de "${file.name}" listo para guardar.`;
+                    this.uploadStatusText = `✅ Texto extraído de "${file.name}" listo para guardar.`;
+                    const statusEl = this.querySelector('#up-file-status');
+                    if (statusEl) statusEl.textContent = this.uploadStatusText;
                 };
                 reader.readAsText(file);
-            } else {
-                if (statusEl) {
-                    statusEl.textContent = `📎 Archivo "${file.name}" (${ext.toUpperCase()}) registrado. Puedes agregar una nota o enlace de respaldo.`;
-                }
-                if (bodyArea && !bodyArea.value) {
-                    bodyArea.value = `[Documento adjunto: ${file.name} (${Math.round(file.size / 1024)} KB)].`;
-                }
+                return;
             }
+
+            // Subir PDF, EPUB o fotografía de página a Supabase Storage
+            this.uploadStatusText = `⏳ Subiendo "${file.name}" a la bóveda privada en Supabase...`;
+            const statusEl = this.querySelector('#up-file-status');
+            if (statusEl) statusEl.textContent = this.uploadStatusText;
+
+            const res = await mediaStorage.uploadFile(file, 'library-docs', file.name);
+            if (res.ok) {
+                this.pendingCloudFileUrl = res.url;
+                const urlInp = this.querySelector('#up-book-url');
+                if (urlInp) urlInp.value = res.url;
+                this.uploadStatusText = `✅ Archivo "${file.name}" (${res.sizeKB} KB) subido a Supabase Storage.`;
+            } else {
+                this.uploadStatusText = `⚠️ Para subir PDFs/Imágenes a la nube, ejecuta el SQL de Bóveda Multimedia en Supabase (Paso 4 de la guía).`;
+            }
+            if (statusEl) statusEl.textContent = this.uploadStatusText;
         });
 
         this.querySelector('#btn-save-upload-book')?.addEventListener('click', () => {
@@ -404,7 +442,7 @@ export class LibraryView extends HTMLElement {
             const category = this.querySelector('#up-book-cat')?.value || 'Escritos personales';
             const description = this.querySelector('#up-book-desc')?.value.trim() || 'Obra adjuntada a nuestra Biblioteca del Amor.';
             const body = this.querySelector('#up-book-body')?.value.trim();
-            const externalUrl = this.querySelector('#up-book-url')?.value.trim() || '';
+            const externalUrl = this.querySelector('#up-book-url')?.value.trim() || this.pendingCloudFileUrl || '';
 
             if (!title || (!body && !externalUrl)) return;
             const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
@@ -423,13 +461,16 @@ export class LibraryView extends HTMLElement {
                 progress: 0,
                 bookmarkChapter: 0,
                 externalUrl,
+                fileFormat: this.pendingCloudFileFormat || 'Documento',
                 notes: [],
                 chapters: [
-                    { title: 'Capítulo 1', body: body || 'Consulta el documento vinculado en el botón inferior.' }
+                    { title: 'Capítulo 1', body: body || 'Documento o página fotografiada disponible aquí mismo.' }
                 ]
             });
 
             this.showUploadForm = false;
+            this.pendingCloudFileUrl = '';
+            this.uploadStatusText = '';
             this.saveLibrary();
             this.render();
             this.bindEvents();
@@ -478,6 +519,12 @@ export class LibraryView extends HTMLElement {
                 if (book) {
                     const total = (book.chapters || []).length || 1;
                     book.progress = Math.min(100, Math.round(((this.activeChapterIndex + 1) / total) * 100));
+                    this.readingHistory.unshift({
+                        bookId: book.id,
+                        title: book.title,
+                        openedAt: new Date().toLocaleDateString('es-MX')
+                    });
+                    this.readingHistory = this.readingHistory.slice(0, 15);
                     this.saveLibrary();
                 }
                 this.render();
