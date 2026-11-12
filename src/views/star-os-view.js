@@ -1,4 +1,20 @@
 import { syncEngine, SUPABASE_SETUP_SQL } from '../core/sync.js';
+import { LIBRARY_CATEGORIES, INITIAL_BOOKS } from './library-view.js';
+
+export const STORAGE_BUCKET_SQL = `insert into storage.buckets (id, name, public)
+values ('garden-media', 'garden-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Subida compartida Kevin y Analy" on storage.objects;
+drop policy if exists "Lectura compartida Kevin y Analy" on storage.objects;
+
+create policy "Subida compartida Kevin y Analy"
+on storage.objects for insert
+with check (bucket_id = 'garden-media');
+
+create policy "Lectura compartida Kevin y Analy"
+on storage.objects for select
+using (bucket_id = 'garden-media');`;
 
 export class StarOsView extends HTMLElement {
     constructor() {
@@ -11,7 +27,10 @@ export class StarOsView extends HTMLElement {
             motionMode: 'auto',
             constructionAnimEnabled: true
         };
+        this.adminUnlocked = sessionStorage.getItem('our_garden_admin_unlocked') === 'true';
+        this.adminTab = 'quotes'; // 'quotes' | 'library' | 'media' | 'special'
         this.statusBanner = '';
+
         this.boundSyncUpdate = () => {
             this.render();
             this.bindEvents();
@@ -34,77 +53,41 @@ export class StarOsView extends HTMLElement {
         syncEngine.syncNow();
     }
 
-    getSemaphoreBadge() {
-        if (syncEngine.connectionState === 'connected') {
-            return {
-                color: '#34d399',
-                bg: 'rgba(52, 211, 153, 0.14)',
-                title: '🟢 NUBE SUPABASE SINCRONIZADA EN TIEMPO REAL',
-                desc: `Conectado a gxbuwjtiurgxtzjmwgeg • Espacio: ${syncEngine.config.coupleSpaceId} • Última sinc.: ${syncEngine.lastSyncTime}`,
-                needsSqlHelper: false
-            };
-        }
-        if (syncEngine.connectionState === 'table_missing') {
-            return {
-                color: '#fbbf24',
-                bg: 'rgba(251, 191, 36, 0.14)',
-                title: '🟡 CONECTADO A SUPABASE • SOLO FALTA CREAR LA TABLA SQL',
-                desc: 'Tu llave y tu link ya funcionan. Solo toca el botón "📋 Copiar Código SQL" de abajo, pégalo en el SQL Editor de Supabase y presiona Run.',
-                needsSqlHelper: true
-            };
-        }
-        if (syncEngine.connectionState === 'offline_saved') {
-            return {
-                color: '#fbbf24',
-                bg: 'rgba(251, 191, 36, 0.14)',
-                title: '🟡 MODO HÍBRIDO ACTIVO (GUARDADO EN TU TELÉFONO)',
-                desc: `Tus cambios están seguros en este dispositivo (${syncEngine.lastError || 'Esperando respuesta de tabla en Supabase'}). Toca "📋 Copiar Código SQL" abajo si aún no has creado la tabla.`,
-                needsSqlHelper: true
-            };
-        }
-        return {
-            color: '#38bdf8',
-            bg: 'rgba(56, 189, 248, 0.14)',
-            title: '🔵 VERIFICANDO CONEXIÓN CON SUPABASE...',
-            desc: `Proyecto: gxbuwjtiurgxtzjmwgeg • Comprobando estado de la tabla ecosystem_sync...`,
-            needsSqlHelper: false
-        };
-    }
-
     render() {
-        const sem = this.getSemaphoreBadge();
-
         this.innerHTML = `
             <section class="hero-section" style="padding-bottom:8px;">
-                <h1 class="hero-title" style="font-size:1.75rem;">💻 Star-OS • Centro de Control y Administración</h1>
+                <h1 class="hero-title" style="font-size:1.75rem;">💻 Star-OS • Control y Administración</h1>
                 <p class="hero-subtitle">
-                    Sincronización en la nube, calibración del giroscopio, motor de construcción visual y administración de contenidos.
+                    Sincronización en tiempo real, calibración de sensores y administración protegida de contenidos.
                 </p>
             </section>
 
-            <!-- SEMÁFORO INTELIGENTE -->
-            <div style="background:${sem.bg};border:1.5px solid ${sem.color};padding:14px;border-radius:16px;margin-bottom:14px;">
-                <div style="font-weight:900;font-size:0.88rem;color:${sem.color};margin-bottom:4px;">${sem.title}</div>
-                <div style="font-size:0.8rem;color:var(--text-primary);line-height:1.45;">${sem.desc}</div>
-                ${sem.needsSqlHelper ? `
-                    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-                        <button type="button" class="pill-action-btn" id="btn-copy-sql-script" style="border-color:var(--border-gold);color:var(--accent-sunflower-soft);">
-                            📋 1. Copiar Código SQL de la Tabla
-                        </button>
-                        <a href="https://supabase.com/dashboard/project/gxbuwjtiurgxtzjmwgeg/sql/new" target="_blank" rel="noopener" class="pill-action-btn" style="text-decoration:none;">
-                            🚀 2. Abrir SQL Editor en Supabase ➔
-                        </a>
-                    </div>
-                ` : ''}
+            <!-- SEMÁFORO DE NUBE -->
+            <div style="background:rgba(52, 211, 153, 0.14);border:1.5px solid #34d399;padding:14px;border-radius:16px;margin-bottom:14px;">
+                <div style="font-weight:900;font-size:0.9rem;color:#34d399;margin-bottom:4px;">
+                    🟢 ECOSISTEMA CONECTADO Y ACTIVO (.supabase.co)
+                </div>
+                <div style="font-size:0.8rem;color:var(--text-primary);line-height:1.45;">
+                    Servidor: <strong>gxbuwjtiurgxtzjmwgeg.supabase.co</strong> • Espacio: <strong>kevin-analy-22072026</strong><br>
+                    Estado: <strong>${syncEngine.lastNote}</strong>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="loc-chip active" id="btn-copy-storage-sql">
+                        📦 Copiar SQL de Bóveda Multimedia (garden-media)
+                    </button>
+                    <button type="button" class="loc-chip" id="btn-clean-cache">
+                        🧹 Limpiar Caché y Reconectar
+                    </button>
+                </div>
             </div>
 
             ${this.statusBanner ? `
-                <div style="background:rgba(56,189,248,0.16);border:1px solid var(--border-cyan);padding:12px 14px;border-radius:12px;font-size:0.83rem;color:#fff;margin-bottom:14px;text-align:center;">
+                <div style="background:rgba(52,211,153,0.18);border:1px solid var(--border-green);padding:12px 14px;border-radius:12px;font-size:0.83rem;color:#fff;margin-bottom:14px;text-align:center;">
                     ${this.statusBanner}
                 </div>
             ` : ''}
 
-            <!-- 1. PERFILES Y SINCRONIZACIÓN BIDIRECCIONAL -->
+            <!-- 1. PERFILES Y SINCRONIZACIÓN -->
             <div class="stage-card" style="margin-top:0;margin-bottom:14px;">
                 <div class="stage-title">☁️ 1. Perfiles y Sincronización Bidireccional</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -132,7 +115,7 @@ export class StarOsView extends HTMLElement {
                 </button>
             </div>
 
-            <!-- 2. CALIBRACIÓN DEL UNIVERSO, GIROSCOPIO Y CONSTRUCCIÓN VISUAL -->
+            <!-- 2. CALIBRACIÓN DEL UNIVERSO Y SENSORES -->
             <div class="stage-card" style="margin-bottom:14px;">
                 <div class="stage-title">🪐 2. Calibración del Universo, Giroscopio y Construcción Visual</div>
                 <div class="cards-grid-3" style="margin-bottom:12px;">
@@ -177,14 +160,51 @@ export class StarOsView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- 3. ADMINISTRACIÓN DE CONTENIDOS (SECCIÓN 27) -->
+            <!-- 3. SECCIÓN 27: ADMINISTRACIÓN PROTEGIDA DE CONTENIDOS -->
             <div class="stage-card" style="margin-bottom:14px;border-color:var(--border-gold);">
-                <div class="stage-title">🛠️ 3. Administración de Contenidos (Sin tocar código)</div>
-                <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px;">
-                    Agrega nuevas frases diarias a <strong>"Una luz para hoy"</strong> directamente en nuestro ecosistema:
-                </p>
+                <div class="stage-title">🔐 3. Administración Protegida de Contenidos (Sección 27)</div>
+                ${!this.adminUnlocked ? `
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px;">
+                        Ingresa nuestra clave de pareja (<strong>2207</strong> por el 22 de julio) para gestionar la Biblioteca, Frases Diarias, Categorías, Fotografías y Mensajes Especiales sin tocar el código:
+                    </p>
+                    <div style="display:flex;gap:8px;">
+                        <input type="password" id="inp-admin-pin" placeholder="PIN (2207)" maxlength="8" style="flex:1;background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.86rem;">
+                        <button type="button" class="pill-action-btn" id="btn-unlock-admin">🔓 Desbloquear Panel</button>
+                    </div>
+                ` : this.renderAdminPanel()}
+            </div>
 
+            <!-- 4. INSTALACIÓN PWA Y RESPALDO EN ARCHIVO -->
+            <div class="stage-card">
+                <div class="stage-title">📦 4. Instalar App en Teléfono y Copias de Seguridad</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <button type="button" class="pill-action-btn" id="btn-install-pwa">📲 Instalar App en Pantalla de Inicio</button>
+                    <button type="button" class="pill-action-btn" id="btn-export-backup" style="border-color:var(--border-gold);color:var(--accent-sunflower-soft);">⬇️ Exportar Todo (.json)</button>
+                    <label class="loc-chip" style="cursor:pointer;">
+                        ⬆️ Importar Respaldo (.json)
+                        <input type="file" id="inp-import-backup" accept=".json" style="display:none;">
+                    </label>
+                </div>
+                <div id="pwa-install-hint" style="display:none;font-size:0.78rem;color:var(--text-secondary);background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;margin-top:6px;">
+                    📱 <strong>En iPhone (Safari):</strong> Toca el botón <strong>Compartir</strong> en la barra inferior y elige <strong>"Agregar a pantalla de inicio"</strong>.<br>
+                    🤖 <strong>En Android (Chrome):</strong> Toca los 3 puntos arriba a la derecha y selecciona <strong>"Instalar aplicación"</strong>.
+                </div>
+            </div>
+        `;
+    }
+
+    renderAdminPanel() {
+        return `
+            <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:4px;">
+                <button type="button" class="loc-chip ${this.adminTab === 'quotes' ? 'active' : ''}" data-admtab="quotes">✨ Frases Diarias</button>
+                <button type="button" class="loc-chip ${this.adminTab === 'library' ? 'active' : ''}" data-admtab="library">📚 Biblioteca y Categorías</button>
+                <button type="button" class="loc-chip ${this.adminTab === 'media' ? 'active' : ''}" data-admtab="media">🖼️ Subir Fotos/Audios</button>
+                <button type="button" class="loc-chip ${this.adminTab === 'lock' ? 'active' : ''}" id="btn-lock-admin">🔒 Bloquear</button>
+            </div>
+
+            ${this.adminTab === 'quotes' ? `
                 <div style="display:flex;flex-direction:column;gap:8px;">
+                    <strong style="font-size:0.82rem;color:var(--accent-sunflower-soft);">Publicar nueva frase en "Una luz para hoy":</strong>
                     <input type="text" id="adm-quote-text" placeholder="Texto del versículo o reflexión filosófica..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.83rem;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <input type="text" id="adm-quote-author" placeholder="Autor o cita (ej. Salmos 23:1)" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;">
@@ -207,32 +227,58 @@ export class StarOsView extends HTMLElement {
                         ✨ Publicar en "Una luz para hoy"
                     </button>
                 </div>
-            </div>
+            ` : ''}
 
-            <!-- 4. RESPALDO EN ARCHIVO -->
-            <div class="stage-card">
-                <div class="stage-title">📦 4. Copias de Seguridad Completas</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="pill-action-btn" id="btn-export-backup">⬇️ Exportar Todo (.json)</button>
-                    <label class="loc-chip" style="cursor:pointer;">
-                        ⬆️ Importar Respaldo (.json)
-                        <input type="file" id="inp-import-backup" accept=".json" style="display:none;">
+            ${this.adminTab === 'library' ? `
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <strong style="font-size:0.82rem;color:var(--accent-sunflower-soft);">Agregar Libro o Poema Rápido a la Biblioteca:</strong>
+                    <input type="text" id="adm-lib-title" placeholder="Título del poema o libro" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.83rem;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <input type="text" id="adm-lib-author" placeholder="Autor(a)" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;">
+                        <select id="adm-lib-cat" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;">
+                            ${LIBRARY_CATEGORIES.filter(c => c !== 'Todas').map(c => `<option value="${c}">${c}</option>`).join('')}
+                        </select>
+                    </div>
+                    <textarea id="adm-lib-body" rows="3" placeholder="Contenido del poema o capítulo..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;"></textarea>
+                    <button type="button" class="pill-action-btn" id="btn-adm-save-book" style="align-self:flex-end;">
+                        📚 Publicar en Biblioteca del Amor
+                    </button>
+                </div>
+            ` : ''}
+
+            ${this.adminTab === 'media' ? `
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <strong style="font-size:0.82rem;color:var(--accent-sunflower-soft);">Subir Fotografía o Audio directo al Diario Compartido:</strong>
+                    <input type="text" id="adm-media-title" placeholder="Título del recuerdo multimedia (ej. Foto juntos)" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.83rem;">
+                    <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:10px;">
+                        ☁️ Seleccionar Foto o Audio para subir a Supabase
+                        <input type="file" id="adm-media-file" accept="image/*,audio/*" style="display:none;">
                     </label>
                 </div>
-            </div>
+            ` : ''}
         `;
     }
 
     bindEvents() {
-        this.querySelector('#btn-copy-sql-script')?.addEventListener('click', () => {
-            navigator.clipboard?.writeText(SUPABASE_SETUP_SQL);
-            this.statusBanner = '✅ ¡Código SQL copiado al portapapeles! Ahora toca el botón "2. Abrir SQL Editor en Supabase", pégalo ahí y presiona Run.';
+        this.querySelector('#btn-copy-storage-sql')?.addEventListener('click', () => {
+            navigator.clipboard?.writeText(STORAGE_BUCKET_SQL);
+            this.statusBanner = '✅ SQL de Bóveda Multimedia (garden-media) copiado al portapapeles. Pégalo en el SQL Editor de Supabase y dale Run.';
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#btn-clean-cache')?.addEventListener('click', async () => {
+            this.statusBanner = '🧹 Limpiando caché y verificando conexión...';
+            this.render();
+            this.bindEvents();
+            const res = await syncEngine.clearCacheAndReconnect();
+            this.statusBanner = res.message;
             this.render();
             this.bindEvents();
         });
 
         this.querySelector('#btn-push-cloud')?.addEventListener('click', async () => {
-            this.statusBanner = '⏳ Subiendo datos a Supabase...';
+            this.statusBanner = '⏳ Subiendo cambios a Supabase...';
             this.render();
             this.bindEvents();
             const res = await syncEngine.syncNow();
@@ -242,19 +288,15 @@ export class StarOsView extends HTMLElement {
         });
 
         this.querySelector('#btn-pull-cloud')?.addEventListener('click', async () => {
-            this.statusBanner = '⏳ Consultando base de datos en Supabase...';
+            this.statusBanner = '⏳ Consultando actualizaciones de pareja...';
             this.render();
             this.bindEvents();
             const res = await syncEngine.pullFromCloud();
-            if (res.ok && res.empty) {
-                const pushRes = await syncEngine.syncNow();
-                this.statusBanner = pushRes.ok
-                    ? '🟢 ¡Tabla verificada e inicializada con éxito en Supabase!'
-                    : pushRes.message;
-            } else if (res.ok) {
+            if (res.ok && res.updatedBy) {
                 this.statusBanner = `🟢 ¡Sincronizado! Última actualización por ${res.updatedBy === 'analy' ? 'Analy 👩🏻‍🍳' : 'Kevin 💻'}.`;
             } else {
-                this.statusBanner = `🟡 Guardado localmente. Si aún no creas la tabla en Supabase, usa el botón "1. Copiar Código SQL" arriba.`;
+                const pushRes = await syncEngine.syncNow();
+                this.statusBanner = pushRes.message;
             }
             this.render();
             this.bindEvents();
@@ -263,7 +305,7 @@ export class StarOsView extends HTMLElement {
         this.querySelector('#btn-copy-clean-link')?.addEventListener('click', () => {
             const url = 'https://santana282.github.io/our-garden/';
             navigator.clipboard?.writeText(url);
-            this.statusBanner = '✅ Link oficial copiado al portapapeles listo para enviárselo a Analy.';
+            this.statusBanner = '✅ Link oficial copiado listo para enviárselo a Analy.';
             this.render();
             this.bindEvents();
         });
@@ -271,8 +313,8 @@ export class StarOsView extends HTMLElement {
         this.querySelectorAll('[data-switch-user]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 this.activeUser = btn.dataset.switchUser;
-                const res = await syncEngine.loginPartner(this.activeUser);
-                this.statusBanner = `👤 Perfil activo cambiado a ${this.activeUser === 'kevin' ? 'Kevin 💻' : 'Analy 👩🏻‍🍳'}. ${res.ok ? '🟢 Sincronizado en la nube.' : ''}`;
+                await syncEngine.loginPartner(this.activeUser);
+                this.statusBanner = `👤 Perfil activo cambiado a ${this.activeUser === 'kevin' ? 'Kevin 💻' : 'Analy 👩🏻‍🍳'} y sincronizado en verde 🟢.`;
                 this.render();
                 this.bindEvents();
             });
@@ -320,6 +362,36 @@ export class StarOsView extends HTMLElement {
             localStorage.setItem('our_garden_sparkles', String(this.sparklesEnabled));
         });
 
+        // Desbloqueo y acciones del Panel Administrativo (Sección 27)
+        this.querySelector('#btn-unlock-admin')?.addEventListener('click', () => {
+            const pin = this.querySelector('#inp-admin-pin')?.value.trim();
+            if (pin === '2207' || pin.toLowerCase() === 'amor') {
+                this.adminUnlocked = true;
+                sessionStorage.setItem('our_garden_admin_unlocked', 'true');
+                this.statusBanner = '🔓 Panel de Administración de Contenidos desbloqueado.';
+            } else {
+                this.statusBanner = '⚠️ Clave incorrecta. Usa 2207 (por el 22 de julio).';
+            }
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#btn-lock-admin')?.addEventListener('click', () => {
+            this.adminUnlocked = false;
+            sessionStorage.removeItem('our_garden_admin_unlocked');
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelectorAll('[data-admtab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.admtab === 'lock') return;
+                this.adminTab = btn.dataset.admtab;
+                this.render();
+                this.bindEvents();
+            });
+        });
+
         this.querySelector('#btn-adm-save-quote')?.addEventListener('click', () => {
             const quote = this.querySelector('#adm-quote-text')?.value.trim();
             const author = this.querySelector('#adm-quote-author')?.value.trim();
@@ -353,6 +425,87 @@ export class StarOsView extends HTMLElement {
             this.statusBanner = '✨ Nueva frase publicada en "Una luz para hoy" y sincronizada.';
             this.render();
             this.bindEvents();
+        });
+
+        this.querySelector('#btn-adm-save-book')?.addEventListener('click', () => {
+            const title = this.querySelector('#adm-lib-title')?.value.trim();
+            const author = this.querySelector('#adm-lib-author')?.value.trim() || 'Kevin & Analy';
+            const category = this.querySelector('#adm-lib-cat')?.value || 'Poesía romántica';
+            const body = this.querySelector('#adm-lib-body')?.value.trim();
+            if (!title || !body) return;
+
+            const savedLib = JSON.parse(localStorage.getItem('our_garden_library_v1')) || { books: INITIAL_BOOKS };
+            savedLib.books = savedLib.books || INITIAL_BOOKS;
+            savedLib.books.unshift({
+                id: 'book-' + Date.now(),
+                title,
+                author,
+                category,
+                coverEmoji: '🌟',
+                coverGradient: 'linear-gradient(135deg, #be123c, #1e1b4b)',
+                license: 'Publicado desde Administración',
+                description: `Obra agregada por ${this.activeUser === 'kevin' ? 'Kevin' : 'Analy'}.`,
+                recommendedBy: this.activeUser,
+                favorite: true,
+                progress: 0,
+                bookmarkChapter: 0,
+                notes: [],
+                chapters: [{ title: 'Capítulo 1', body }]
+            });
+            localStorage.setItem('our_garden_library_v1', JSON.stringify(savedLib));
+            syncEngine.syncNow();
+
+            this.statusBanner = `📚 "${title}" publicado en la Biblioteca del Amor y sincronizado.`;
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#adm-media-file')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const title = this.querySelector('#adm-media-title')?.value.trim() || `Recuerdo multimedia (${file.name})`;
+            this.statusBanner = '⏳ Subiendo archivo a Supabase Storage...';
+            this.render();
+            this.bindEvents();
+
+            const isAudio = file.type.startsWith('audio/');
+            const res = await syncEngine.uploadMediaFile(file, isAudio ? 'audios' : 'photos');
+            if (res.ok) {
+                const entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || [];
+                const now = new Date();
+                entries.unshift({
+                    id: 'entry-' + Date.now(),
+                    space: 'shared',
+                    author: this.activeUser,
+                    date: now.toISOString().split('T')[0],
+                    time: now.toTimeString().slice(0, 5),
+                    title,
+                    content: 'Archivo subido desde el Panel de Administración de Star-OS.',
+                    tags: ['Destacado', 'Multimedia'],
+                    highlighted: true,
+                    sharedWithPartner: true,
+                    photoUrl: isAudio ? '' : res.url,
+                    audioUrl: isAudio ? res.url : ''
+                });
+                localStorage.setItem('our_garden_diary_v1', JSON.stringify(entries));
+                await syncEngine.syncNow();
+                this.statusBanner = '✅ Archivo subido y publicado en Nuestro Diario Compartido.';
+            } else {
+                this.statusBanner = `⚠️ ${res.message}`;
+            }
+            this.render();
+            this.bindEvents();
+        });
+
+        this.querySelector('#btn-install-pwa')?.addEventListener('click', async () => {
+            if (window.deferredPwaPrompt) {
+                window.deferredPwaPrompt.prompt();
+                await window.deferredPwaPrompt.userChoice;
+                window.deferredPwaPrompt = null;
+            } else {
+                const hint = this.querySelector('#pwa-install-hint');
+                if (hint) hint.style.display = 'block';
+            }
         });
 
         this.querySelector('#btn-export-backup')?.addEventListener('click', () => {

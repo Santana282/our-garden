@@ -21,15 +21,15 @@ window.addEventListener('beforeinstallprompt', (e) => {
    SECCIÓN 24: SISTEMA DE CONSTRUCCIÓN VISUAL INTERACTIVA (4 ETAPAS)
    ========================================================================= */
 const SECTION_PALETTES = {
-    '#/': { primary: '#fbbf24', secondary: '#34d399', label: 'Materializando Nuestro Ecosistema...' },
-    '#/jardin': { primary: '#34d399', secondary: '#fbbf24', label: 'Cultivando Invernadero de Girasoles...' },
-    '#/tus-dias': { primary: '#f472b6', secondary: '#c084fc', label: 'Sincronizando Calendario Lunar...' },
-    '#/diario': { primary: '#fde68a', secondary: '#38bdf8', label: 'Desplegando Páginas de Nuestros Diarios...' },
-    '#/biblioteca': { primary: '#f59e0b', secondary: '#a855f7', label: 'Iluminando Biblioteca del Amor...' },
-    '#/arcade': { primary: '#38bdf8', secondary: '#fb7185', label: 'Construyendo Tablero Arcade...' },
-    '#/star-os': { primary: '#38bdf8', secondary: '#818cf8', label: 'Conectando Nodos de Star-OS...' },
-    '#/botiquin': { primary: '#fb7185', secondary: '#fde68a', label: 'Activando Cápsulas de Cuidado...' },
-    '#/acuerdos': { primary: '#34d399', secondary: '#38bdf8', label: 'Enlazando Compromisos Bilaterales...' }
+    '#/': { primary: '#fbbf24', secondary: '#34d399' },
+    '#/jardin': { primary: '#34d399', secondary: '#fbbf24' },
+    '#/tus-dias': { primary: '#f472b6', secondary: '#c084fc' },
+    '#/diario': { primary: '#fde68a', secondary: '#38bdf8' },
+    '#/biblioteca': { primary: '#f59e0b', secondary: '#a855f7' },
+    '#/arcade': { primary: '#38bdf8', secondary: '#fb7185' },
+    '#/star-os': { primary: '#38bdf8', secondary: '#818cf8' },
+    '#/botiquin': { primary: '#fb7185', secondary: '#fde68a' },
+    '#/acuerdos': { primary: '#34d399', secondary: '#38bdf8' }
 };
 
 class VisualConstructionEngine {
@@ -60,7 +60,6 @@ class VisualConstructionEngine {
         const w = this.canvas.width;
         const h = this.canvas.height;
 
-        // Recolectar destinos reales de las tarjetas recién insertadas en el DOM
         const cards = Array.from(document.querySelectorAll('#app-root .glass-card, #app-root .stage-card, #app-root .element-btn-card'));
         cards.forEach((card, i) => {
             card.style.opacity = '0';
@@ -93,13 +92,12 @@ class VisualConstructionEngine {
         });
 
         const startTime = performance.now();
-        const duration = 680; // Rápida y fluida: nunca bloquea la navegación
+        const duration = 680;
 
         const animate = (now) => {
             const t = Math.min(1, (now - startTime) / duration);
             this.ctx.clearRect(0, 0, w, h);
 
-            // Etapa 1: Pulso y onda expansiva en el punto de activación
             if (t < 0.45) {
                 const pulseProgress = t / 0.45;
                 this.ctx.strokeStyle = palette.primary;
@@ -109,14 +107,12 @@ class VisualConstructionEngine {
                 this.ctx.stroke();
             }
 
-            // Etapa 2 y 3: Flechas luminosas curvas y nodos de construcción
             arrows.forEach(a => {
                 const p = Math.min(1, t * 1.25);
                 const inv = 1 - p;
                 const x = inv * inv * a.sx + 2 * inv * p * a.cx + p * p * a.tx;
                 const y = inv * inv * a.sy + 2 * inv * p * a.cy + p * p * a.ty;
 
-                // Estela curva
                 this.ctx.strokeStyle = a.color;
                 this.ctx.globalAlpha = (1 - t) * 0.75;
                 this.ctx.lineWidth = 2;
@@ -125,14 +121,12 @@ class VisualConstructionEngine {
                 this.ctx.quadraticCurveTo(a.cx, a.cy, x, y);
                 this.ctx.stroke();
 
-                // Punta de flecha / partícula constructora
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.globalAlpha = 1 - t * 0.5;
                 this.ctx.beginPath();
                 this.ctx.arc(x, y, 3.2, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                // Etapa 4: Pulso de materialización en el destino
                 if (p >= 0.95) {
                     const ringR = (t - 0.7) * 90;
                     if (ringR > 0) {
@@ -157,9 +151,6 @@ class VisualConstructionEngine {
     }
 }
 
-/* =========================================================================
-   ENRUTADOR SPA CON INTEGRACIÓN DE CONSTRUCCIÓN VISUAL
-   ========================================================================= */
 class SafeRouter {
     constructor(routes, rootId, constructionEngine) {
         this.routes = routes;
@@ -187,9 +178,6 @@ class SafeRouter {
     }
 }
 
-/* =========================================================================
-   SECCIÓN 23: UNIVERSO ESPACIAL DINÁMICO EN TIEMPO REAL
-   ========================================================================= */
 function initPhoenixCosmosEngine() {
     const canvas = document.getElementById('phoenix-cosmos-canvas');
     if (!canvas) return;
@@ -284,7 +272,6 @@ function initPhoenixCosmosEngine() {
         window.dispatchEvent(new CustomEvent('ecosystem:gyro-state', { detail: { active: gyroEnabled } }));
     });
 
-    // Obtener paleta astronómica según la hora real del día
     function getTimeScenarioPalette() {
         const hour = new Date().getHours();
         if (currentTheme === 'enologia') {
@@ -294,21 +281,15 @@ function initPhoenixCosmosEngine() {
             return { bgTop: '#140c04', bgBot: '#04060e', starAlpha: 0.85, ringInner: 'rgba(251,191,36,0.95)', ringMid: 'rgba(245,158,11,0.82)', ringOuter: 'rgba(52,211,153,0.22)' };
         }
 
-        // Evolución automática según hora local (Sección 23)
         if (hour >= 6 && hour < 9) {
-            // Amanecer: dorado y rosado cálido
             return { bgTop: '#1c1026', bgBot: '#090714', starAlpha: 0.45, ringInner: 'rgba(253,230,138,0.95)', ringMid: 'rgba(244,114,182,0.82)', ringOuter: 'rgba(251,191,36,0.25)' };
         } else if (hour >= 9 && hour < 17) {
-            // Día: universo azul celeste profundo
             return { bgTop: '#081c38', bgBot: '#040b1a', starAlpha: 0.35, ringInner: 'rgba(254,240,138,0.92)', ringMid: 'rgba(56,189,248,0.75)', ringOuter: 'rgba(244,114,182,0.22)' };
         } else if (hour >= 17 && hour < 20) {
-            // Atardecer: violeta, rosa y naranja
             return { bgTop: '#1f0d29', bgBot: '#060512', starAlpha: 0.72, ringInner: 'rgba(251,113,133,0.95)', ringMid: 'rgba(192,132,252,0.82)', ringOuter: 'rgba(245,158,11,0.25)' };
         } else if (hour >= 0 && hour < 6) {
-            // Madrugada: universo profundo y tranquilo
             return { bgTop: '#020308', bgBot: '#04060e', starAlpha: 0.95, ringInner: 'rgba(244,114,182,0.85)', ringMid: 'rgba(129,140,248,0.68)', ringOuter: 'rgba(56,189,248,0.18)' };
         }
-        // Noche (20:00 - 23:59): agujero negro Phoenix-A intenso
         return { bgTop: '#04060e', bgBot: '#020308', starAlpha: 1, ringInner: 'rgba(244,114,182,0.96)', ringMid: 'rgba(244,114,182,0.85)', ringOuter: 'rgba(251,113,133,0.26)' };
     }
 
@@ -319,21 +300,18 @@ function initPhoenixCosmosEngine() {
             tick += 0.015;
             const pal = getTimeScenarioPalette();
 
-            // Fondo con gradiente astronómico
             const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
             bgGrad.addColorStop(0, pal.bgTop);
             bgGrad.addColorStop(1, pal.bgBot);
             ctx.fillStyle = bgGrad;
             ctx.fillRect(0, 0, width, height);
 
-            // Movimiento orbital automático suave si no hay giroscopio activo
             const autoX = (prefs.motionMode === 'auto' && !gyroEnabled) ? Math.cos(tick * 0.7) * 10 : 0;
             const autoY = (prefs.motionMode === 'auto' && !gyroEnabled) ? Math.sin(tick * 0.5) * 8 : 0;
 
             currentOffsetX += ((targetOffsetX + autoX) - currentOffsetX) * 0.08;
             currentOffsetY += ((targetOffsetY + autoY) - currentOffsetY) * 0.08;
 
-            // Dibujar campo de estrellas con diferentes profundidades y parpadeo
             ctx.globalAlpha = pal.starAlpha;
             for (const s of stars) {
                 const sx = (s.x + currentOffsetX * s.depth + width) % width;
@@ -347,7 +325,6 @@ function initPhoenixCosmosEngine() {
             }
             ctx.globalAlpha = 1;
 
-            // Estrellas fugaces ocasionales
             if (!shootingStar && Math.random() < 0.006) {
                 shootingStar = {
                     x: Math.random() * width * 0.8 + width * 0.1,
@@ -370,7 +347,6 @@ function initPhoenixCosmosEngine() {
                 if (shootingStar.life <= 0) shootingStar = null;
             }
 
-            // Agujero Negro Central Phoenix-A con disco de acreción y lente gravitacional
             const cx = width * 0.5 + currentOffsetX * 0.45;
             const cy = Math.min(height * 0.48, 390) + currentOffsetY * 0.45;
             const outerRadius = Math.min(width, height) * 0.34;
@@ -387,14 +363,12 @@ function initPhoenixCosmosEngine() {
             ctx.arc(cx, cy, outerRadius * 1.38, 0, Math.PI * 2);
             ctx.fill();
 
-            // Halo de distorsión gravitacional de fotones
             ctx.strokeStyle = 'rgba(254, 243, 199, 0.35)';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(cx, cy, innerRadius * 1.04, 0, Math.PI * 2);
             ctx.stroke();
 
-            // Horizonte de sucesos central
             ctx.fillStyle = '#03050c';
             ctx.beginPath();
             ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
@@ -426,6 +400,7 @@ function initYouTubeAudioEngine() {
     let ytPlayer = null;
     let isReady = false;
     let isPlaying = false;
+    const savedTrack = localStorage.getItem('our_garden_music_track') || 'PEM0Vs8jf1w';
 
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
@@ -435,18 +410,18 @@ function initYouTubeAudioEngine() {
         ytPlayer = new window.YT.Player('yt-player-instance', {
             height: '1',
             width: '1',
-            videoId: 'PEM0Vs8jf1w',
+            videoId: savedTrack,
             playerVars: {
                 autoplay: 0,
                 controls: 0,
                 loop: 1,
-                playlist: 'PEM0Vs8jf1w',
+                playlist: savedTrack,
                 playsinline: 1
             },
             events: {
                 onReady: () => {
                     isReady = true;
-                    ytPlayer.setVolume(60);
+                    ytPlayer.setVolume(65);
                 },
                 onStateChange: (e) => {
                     isPlaying = (e.data === window.YT.PlayerState.PLAYING);
@@ -463,6 +438,12 @@ function initYouTubeAudioEngine() {
         } else {
             ytPlayer.playVideo();
         }
+    });
+
+    window.addEventListener('ecosystem:change-track', (e) => {
+        if (!isReady || !ytPlayer) return;
+        const videoId = e.detail.videoId;
+        ytPlayer.loadVideoById({ videoId });
     });
 
     window.addEventListener('ecosystem:volume-change', (e) => {
