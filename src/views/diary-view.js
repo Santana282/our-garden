@@ -88,7 +88,6 @@ export class DiaryView extends HTMLElement {
         this.render();
         this.bindEvents();
         window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
-        // Descargar automáticamente las últimas notas y fotos al abrir la vista del Diario
         syncEngine.pullFromCloud();
     }
 
@@ -96,18 +95,23 @@ export class DiaryView extends HTMLElement {
         window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
+    getLocalDateString(d = new Date()) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     async saveEntries() {
         localStorage.setItem('our_garden_diary_v1', JSON.stringify(this.entries));
-        await syncEngine.syncNow();
+        return await syncEngine.syncNow();
     }
 
     getVisibleEntries() {
         return this.entries.filter(e => {
             if (this.filterDate && e.date !== this.filterDate) return false;
-            // Si una nota fue marcada explícitamente como solo privada, solo su autor la ve
             if (e.privateOnly === true && e.author !== this.activeUser) return false;
 
-            // En "Nuestro Diario" aparecen todas las entradas compartidas de ambos
             if (this.activeSpace === 'shared') {
                 return e.privateOnly !== true;
             }
@@ -128,11 +132,11 @@ export class DiaryView extends HTMLElement {
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📖 Nuestros Diarios e Historia</h1>
                 <p class="hero-subtitle">
-                    Tres espacios sincronizados con fotografías optimizadas y notas de voz en tiempo real.
+                    Sincronización en vivo entre ambos teléfonos (${this.entries.length} recuerdos guardados).
                 </p>
             </section>
 
-            <!-- Barra Superior: Autor, Botón de Sincronización Directa y Filtro -->
+            <!-- Barra Superior: Autor y Botón de Sincronización Directa -->
             <div class="glass-card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label">👤 ESCRIBIENDO COMO:</span>
@@ -142,13 +146,10 @@ export class DiaryView extends HTMLElement {
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-                    <button type="button" class="pill-action-btn" id="btn-refresh-diary" style="padding:5px 11px;font-size:0.75rem;">
-                        🔄 Actualizar notas y fotos ahora
+                    <button type="button" class="pill-action-btn" id="btn-refresh-diary" style="padding:6px 12px;font-size:0.76rem;">
+                        🔄 Sincronizar notas y fotos (${this.entries.length})
                     </button>
-                    <div style="display:flex;gap:4px;">
-                        <input type="date" id="diary-date-filter" value="${this.filterDate}" style="background:#060a17;border:1px solid var(--border-subtle);padding:4px 8px;border-radius:8px;font-size:0.74rem;">
-                        ${this.filterDate ? `<button type="button" class="loc-chip" id="clear-date-filter">Todas</button>` : ''}
-                    </div>
+                    <div style="font-size:0.68rem;color:var(--accent-emerald);">${syncEngine.lastNote}</div>
                 </div>
             </div>
 
@@ -212,11 +213,7 @@ export class DiaryView extends HTMLElement {
 
             <!-- Lista Cronológica de Entradas -->
             <div style="display:flex;flex-direction:column;gap:12px;">
-                ${list.length === 0 ? `
-                    <div class="glass-card" style="padding:24px;color:var(--text-secondary);">
-                        No hay entradas en este filtro. Toca "🔄 Actualizar notas y fotos ahora" arriba.
-                    </div>
-                ` : list.map(item => `
+                ${list.map(item => `
                     <article class="stage-card" style="margin-top:0;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                             <div>
@@ -272,13 +269,13 @@ export class DiaryView extends HTMLElement {
         });
 
         this.querySelector('#btn-refresh-diary')?.addEventListener('click', async () => {
-            this.uploadStatus = '⏳ Sincronizando notas y fotos con el teléfono de tu pareja...';
+            this.uploadStatus = '⏳ Fusionando recuerdos entre ambos teléfonos...';
             this.render();
             this.bindEvents();
             await syncEngine.pullFromCloud();
-            await syncEngine.syncNow();
+            const res = await syncEngine.syncNow();
             this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
-            this.uploadStatus = `🟢 ¡Diario actualizado a las ${new Date().toLocaleTimeString('es-MX')}!`;
+            this.uploadStatus = res.message;
             this.render();
             this.bindEvents();
         });
@@ -291,25 +288,13 @@ export class DiaryView extends HTMLElement {
             });
         });
 
-        this.querySelector('#diary-date-filter')?.addEventListener('change', (e) => {
-            this.filterDate = e.target.value;
-            this.render();
-            this.bindEvents();
-        });
-
-        this.querySelector('#clear-date-filter')?.addEventListener('click', () => {
-            this.filterDate = '';
-            this.render();
-            this.bindEvents();
-        });
-
         this.querySelector('#inp-diary-photo')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
             const currentTitle = this.querySelector('#entry-title')?.value || '';
             const currentContent = this.querySelector('#entry-content')?.value || '';
 
-            this.uploadStatus = '⏳ Optimizando y subiendo fotografía...';
+            this.uploadStatus = '⏳ Optimizando fotografía...';
             this.render();
             this.bindEvents();
 
@@ -332,7 +317,7 @@ export class DiaryView extends HTMLElement {
             const currentTitle = this.querySelector('#entry-title')?.value || '';
             const currentContent = this.querySelector('#entry-content')?.value || '';
 
-            this.uploadStatus = '⏳ Subiendo nota de voz...';
+            this.uploadStatus = '⏳ Preparando nota de voz...';
             this.render();
             this.bindEvents();
 
@@ -355,7 +340,6 @@ export class DiaryView extends HTMLElement {
             const tagsRaw = this.querySelector('#entry-tags')?.value.trim();
             const shareChk = this.querySelector('#entry-share-chk')?.checked;
 
-            // Permitir que suban una foto rápida aunque no hayan escrito título o texto largo
             if (!title && !content && !this.pendingPhotoUrl && !this.pendingAudioUrl) return;
             if (!title) {
                 title = this.pendingPhotoUrl ? '📸 Fotografía compartida' : '💌 Nota del día';
@@ -369,7 +353,7 @@ export class DiaryView extends HTMLElement {
                 id: 'entry-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
                 space: this.activeSpace,
                 author: this.activeUser,
-                date: now.toISOString().split('T')[0],
+                date: this.getLocalDateString(now),
                 time: now.toTimeString().slice(0, 5),
                 title,
                 content,
@@ -384,13 +368,13 @@ export class DiaryView extends HTMLElement {
             this.entries.unshift(newEntry);
             this.pendingPhotoUrl = '';
             this.pendingAudioUrl = '';
-            this.uploadStatus = '⏳ Guardando y enviando al teléfono de tu pareja...';
+            this.uploadStatus = '⏳ Subiendo a Supabase...';
             this.render();
             this.bindEvents();
 
-            await this.saveEntries();
+            const syncRes = await this.saveEntries();
             this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || this.entries;
-            this.uploadStatus = '🟢 ¡Publicado y sincronizado en ambos teléfonos!';
+            this.uploadStatus = syncRes.message;
             this.render();
             this.bindEvents();
         });
