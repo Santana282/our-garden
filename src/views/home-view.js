@@ -124,6 +124,15 @@ export class HomeView extends HTMLElement {
             manualIndex: null
         };
         this.nasaData = null;
+
+        this.boundRemotePull = () => {
+            this.stages = JSON.parse(localStorage.getItem('jardin_stages_v1')) || INITIAL_STAGES;
+            this.lightState = JSON.parse(localStorage.getItem('our_garden_daily_light_v1')) || this.lightState;
+            this.render();
+            this.startUptimeCounter();
+            this.bindEvents();
+            this.updateNasaBadge();
+        };
     }
 
     connectedCallback() {
@@ -131,10 +140,12 @@ export class HomeView extends HTMLElement {
         this.startUptimeCounter();
         this.bindEvents();
         this.fetchNasaAstronomyData();
+        window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     disconnectedCallback() {
         if (this.uptimeTimer) clearInterval(this.uptimeTimer);
+        window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
     saveLightState() {
@@ -177,7 +188,13 @@ export class HomeView extends HTMLElement {
         }
         const next22 = new Date(targetYear, targetMonth, 22, 0, 0, 0);
         const diffDays = Math.ceil((next22 - now) / 86400000);
-        return `Día 22 en ${diffDays}d • Presente Activo 💖`;
+        return `Día 22 en ${diffDays}d • Toca aquí 💖`;
+    }
+
+    getLatestDiaryHeartbeat() {
+        const entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || [];
+        if (entries.length === 0) return null;
+        return entries[0];
     }
 
     getRealAstronomicalTelemetry() {
@@ -215,7 +232,7 @@ export class HomeView extends HTMLElement {
                 this.updateNasaBadge();
                 return;
             }
-            const res = await fetch('[https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY](https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY)');
+            const res = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
             if (!res.ok) return;
             const data = await res.json();
             this.nasaData = { title: data.title, date: data.date };
@@ -257,6 +274,7 @@ export class HomeView extends HTMLElement {
         const isFav = (this.lightState.favorites || []).includes(todayLight.id);
         const astro = this.getRealAstronomicalTelemetry();
         const next22Label = this.getNextMonthlyAnniversary();
+        const latestDiary = this.getLatestDiaryHeartbeat();
         const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
 
         this.innerHTML = `
@@ -277,11 +295,31 @@ export class HomeView extends HTMLElement {
                     <span class="card-label">🌱 VITALIDAD</span>
                     <div class="card-value emerald" id="home-vitality-val">${vit.pct}% (${vit.completed}/${vit.totalActions})</div>
                 </div>
-                <div class="glass-card">
-                    <span class="card-label">📅 ANIVERSARIO MENSUAL</span>
+                <div class="glass-card" id="card-anniversary-22" style="cursor:pointer;border-color:var(--border-pink);">
+                    <span class="card-label">📅 RUMBO AL 4° MES</span>
                     <div class="card-value rose" style="font-size:0.82rem;">${next22Label}</div>
                 </div>
             </div>
+
+            <!-- ÚLTIMO LATIDO DEL DIARIO COMPARTIDO -->
+            ${latestDiary ? `
+                <div class="glass-card" style="text-align:left;margin-top:10px;padding:12px 14px;border-color:var(--border-gold);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                        <span style="font-size:0.7rem;font-weight:800;color:var(--accent-sunflower);text-transform:uppercase;">
+                            💌 Último Latido en Nuestro Diario • Por ${latestDiary.author === 'analy' ? '👩🏻‍🍳 Analy' : '💻 Kevin'} (${latestDiary.date})
+                        </span>
+                        <div style="font-size:0.92rem;font-weight:800;color:var(--text-primary);margin-top:2px;">
+                            ${latestDiary.title}
+                        </div>
+                        <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+                            ${latestDiary.content}
+                        </p>
+                    </div>
+                    <a href="#/diario" class="pill-action-btn" style="text-decoration:none;font-size:0.75rem;">
+                        📖 Ver en el Diario ➔
+                    </a>
+                </div>
+            ` : ''}
 
             <!-- SECCIÓN 26: MÓDULO "UNA LUZ PARA HOY" -->
             <div class="stage-card" style="border-color:var(--border-gold);margin-top:12px;">
@@ -339,7 +377,7 @@ export class HomeView extends HTMLElement {
                     <span style="font-size:0.72rem;font-weight:800;color:var(--accent-sky);text-transform:uppercase;">
                         🔭 Observatorio en Tiempo Real • Transparencia Científica
                     </span>
-                    <a href="#/biblioteca" class="loc-chip active" style="text-decoration:none;font-size:0.7rem;">📚 Ir a Biblioteca del Amor ➔</a>
+                    <a href="#/biblioteca" class="loc-chip active" style="text-decoration:none;font-size:0.7rem;">🍷 Abrir Menú de 4 Meses en Biblioteca ➔</a>
                 </div>
                 <div style="font-size:0.8rem;color:var(--text-primary);display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;">
                     <div>
@@ -383,6 +421,10 @@ export class HomeView extends HTMLElement {
     }
 
     bindEvents() {
+        this.querySelector('#card-anniversary-22')?.addEventListener('click', () => {
+            this.openAnniversaryCapsuleModal();
+        });
+
         this.querySelector('#btn-fav-light')?.addEventListener('click', () => {
             const todayLight = this.getTodayPhrase();
             const favs = this.lightState.favorites || [];
@@ -392,6 +434,7 @@ export class HomeView extends HTMLElement {
             this.lightState.favorites = favs;
             this.saveLightState();
             this.render();
+            this.startUptimeCounter();
             this.bindEvents();
         });
 
@@ -401,6 +444,7 @@ export class HomeView extends HTMLElement {
             this.lightState.manualIndex = (current + 1) % all.length;
             this.saveLightState();
             this.render();
+            this.startUptimeCounter();
             this.bindEvents();
         });
 
@@ -465,6 +509,41 @@ export class HomeView extends HTMLElement {
         });
     }
 
+    openAnniversaryCapsuleModal() {
+        this.openModal(`
+            <div style="text-align:left;max-height:82vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <h3 style="color:var(--accent-rose);font-size:1.05rem;">💖 Nuestra Ruta de Día 22 (22 Jul – 22 Nov)</h3>
+                    <button type="button" class="loc-chip" id="close-eco-modal">✕</button>
+                </div>
+                <p style="font-size:0.83rem;color:var(--text-secondary);margin-bottom:12px;">
+                    Cada día 22 celebramos un mes más desde aquel 22 de julio de 2026:
+                </p>
+                <div style="display:flex;flex-direction:column;gap:8px;font-size:0.82rem;margin-bottom:14px;">
+                    <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;border-left:3px solid var(--accent-sunflower);">
+                        <strong>🌻 22 de Julio de 2026 (El Origen):</strong> Oficialización de nuestro noviazgo con el folleto HTML y la ecuación de Dirac.
+                    </div>
+                    <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;border-left:3px solid var(--accent-sky);">
+                        <strong>✨ 22 de Agosto de 2026 (1° Mes):</strong> Primer mes compartiendo desvelos, risas y llamadas en Discord.
+                    </div>
+                    <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;border-left:3px solid var(--accent-rose);">
+                        <strong>🎂 22 de Septiembre de 2026 (2° Mes + Cumpleaños de Analy):</strong> Doble festejo para "Mi Ponanita preciosa" tras sus flores amarillas en código.
+                    </div>
+                    <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:10px;border-left:3px solid var(--accent-emerald);">
+                        <strong>🚌 22-27 de Octubre de 2026 (3° Mes + Encuentro en Orizaba):</strong> Cuenta compartida en Revolut, llegada al ADO de Orizaba, primer beso, domingo de novios y nuestra Pinky Promise.
+                    </div>
+                    <div style="background:rgba(244,114,182,0.12);padding:10px;border-radius:10px;border:1px solid var(--border-pink);">
+                        <strong>🍷 22 de Noviembre de 2026 (4° Mesiversario):</strong> Ya tienes listo el libro especial <em>"Menú de Degustación: Nuestros Primeros 4 Meses"</em> en la Biblioteca del Amor.
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:8px;">
+                    <a href="#/biblioteca" class="pill-action-btn" style="text-decoration:none;flex:1;justify-content:center;">🍷 Leer Menú en Biblioteca</a>
+                    <button type="button" class="loc-chip" id="close-eco-modal">Cerrar</button>
+                </div>
+            </div>
+        `);
+    }
+
     openArchiveLightsModal() {
         const all = this.getAllPhrases();
         const refs = this.lightState.reflections || [];
@@ -477,7 +556,7 @@ export class HomeView extends HTMLElement {
                 ${refs.length > 0 ? `
                     <div style="margin-bottom:12px;background:rgba(52,211,153,0.1);padding:10px;border-radius:10px;">
                         <strong style="font-size:0.78rem;color:var(--accent-emerald);">💬 Nuestras reflexiones guardadas:</strong>
-                        ${refs.slice(0, 5).map(r => `
+                        ${refs.slice(0, 8).map(r => `
                             <div style="font-size:0.8rem;margin-top:6px;border-bottom:1px solid var(--border-subtle);padding-bottom:4px;">
                                 <strong>${r.author === 'kevin' ? '💻 Kevin' : '👩🏻‍🍳 Analy'} (${r.date} • ${r.quoteTitle}):</strong> ${r.text}
                             </div>
@@ -552,12 +631,13 @@ export class HomeView extends HTMLElement {
         if (!modal || !content) return;
         content.innerHTML = html;
         modal.classList.add('open');
-        content.querySelector('#close-eco-modal')?.addEventListener('click', () => {
-            modal.classList.remove('open');
+        content.querySelectorAll('#close-eco-modal').forEach(btn => {
+            btn.addEventListener('click', () => modal.classList.remove('open'));
         });
     }
 
     startUptimeCounter() {
+        if (this.uptimeTimer) clearInterval(this.uptimeTimer);
         const startRel = new Date(2026, 6, 22, 0, 0, 0); // 22 de julio de 2026
         const update = () => {
             const now = new Date();

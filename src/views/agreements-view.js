@@ -21,7 +21,7 @@ const INITIAL_AGREEMENTS = [
     },
     {
         id: 'agr-3',
-        description: 'Planear juntos con anticipación nuestros encuentros presenciales (Diciembre en CDMX/Pachuca y Verano en Puebla).',
+        description: 'Planear juntos con anticipación nuestros encuentros presenciales (Diciembre en CDMX/Pachuca/Atlixco y Verano en Puebla).',
         createdAt: '2026-10-26',
         responsible: 'Kevin y Analy',
         status: 'Cumplido',
@@ -36,15 +36,24 @@ const INITIAL_AGREEMENTS = [
         status: 'Pendiente',
         reviewDate: '2027-07-22',
         history: ['27/10/2026: Conversado durante el regreso de Orizaba a Atlixco.']
+    },
+    {
+        id: 'agr-5',
+        description: 'Cuidarnos y mantener transparencia total en reuniones o salidas de fin de año con amigos ("Tienes que regresar completo").',
+        createdAt: '2026-09-14',
+        responsible: 'Kevin',
+        status: 'Cumplido',
+        reviewDate: '2026-12-31',
+        history: ['14/09/2026: Acordado en WhatsApp por tranquilidad y cuidado mutuo.']
     }
 ];
 
 const INITIAL_GOALS = [
     {
         id: 'goal-1',
-        category: 'Familia & Vínculo 💖',
-        title: 'Conocer formalmente a la familia de Analy este año',
-        proposedBy: 'Analy',
+        category: 'Familia & Navidad 🎄',
+        title: 'Conocer formalmente a la familia de Analy este año y compartir la taquiza navideña ("1 con pena y 12 en confianza")',
+        proposedBy: 'Analy y Kevin',
         done: false
     },
     {
@@ -57,9 +66,16 @@ const INITIAL_GOALS = [
     {
         id: 'goal-3',
         category: 'Fondo Compartido 💳',
-        title: 'Ahorrar juntos en nuestra cuenta de Revolut para nuestro patrimonio y emergencias',
+        title: 'Ahorrar semanalmente ($50 a $100+) en nuestra cuenta compartida de Revolut (@avazquezgomez98) para inversiones y patrimonio',
         proposedBy: 'Kevin y Analy',
         done: true
+    },
+    {
+        id: 'goal-8',
+        category: 'Plan Inmuebles 🏠',
+        title: 'Al terminar de pagar las colegiaturas de la escuela, destinar ese flujo mensual directo a nuestro inmueble/hogar sin esperar años de trámites',
+        proposedBy: 'Kevin',
+        done: false
     },
     {
         id: 'goal-4',
@@ -71,7 +87,7 @@ const INITIAL_GOALS = [
     {
         id: 'goal-5',
         category: 'Nuestro Hogar 🏡',
-        title: 'Empezar con nuestro hogar básico sin pagar renta para ahorrar rumbo a otra casa',
+        title: 'Empezar con nuestro hogar básico sin pagar renta para ahorrar rumbo a nuestra casa definitiva',
         proposedBy: 'Kevin y Analy',
         done: false
     },
@@ -91,21 +107,37 @@ const INITIAL_GOALS = [
     }
 ];
 
+function ensureSeedList(savedList, initialSeeds) {
+    if (!Array.isArray(savedList) || savedList.length === 0) return initialSeeds;
+    const map = new Map();
+    savedList.forEach(item => { if (item && item.id) map.set(item.id, item); });
+    initialSeeds.forEach(seed => {
+        if (!map.has(seed.id)) {
+            map.set(seed.id, seed);
+        }
+    });
+    return Array.from(map.values());
+}
+
 export class AgreementsView extends HTMLElement {
     constructor() {
         super();
-        this.agreements = JSON.parse(localStorage.getItem('our_garden_agreements_v1')) || INITIAL_AGREEMENTS;
-        this.goals = JSON.parse(localStorage.getItem('our_garden_goals_v1')) || INITIAL_GOALS;
-        this.activeTab = 'goals'; // 'goals' | 'agreements'
+        const rawAgreements = JSON.parse(localStorage.getItem('our_garden_agreements_v1'));
+        const rawGoals = JSON.parse(localStorage.getItem('our_garden_goals_v1'));
+        this.agreements = ensureSeedList(rawAgreements, INITIAL_AGREEMENTS);
+        this.goals = ensureSeedList(rawGoals, INITIAL_GOALS);
+        this.activeTab = 'goals';
+
         this.boundRemotePull = () => {
-            this.agreements = JSON.parse(localStorage.getItem('our_garden_agreements_v1')) || INITIAL_AGREEMENTS;
-            this.goals = JSON.parse(localStorage.getItem('our_garden_goals_v1')) || INITIAL_GOALS;
+            this.agreements = ensureSeedList(JSON.parse(localStorage.getItem('our_garden_agreements_v1')), INITIAL_AGREEMENTS);
+            this.goals = ensureSeedList(JSON.parse(localStorage.getItem('our_garden_goals_v1')), INITIAL_GOALS);
             this.render();
             this.bindEvents();
         };
     }
 
     connectedCallback() {
+        this.saveAll();
         this.render();
         this.bindEvents();
         window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
@@ -133,7 +165,6 @@ export class AgreementsView extends HTMLElement {
                 </p>
             </section>
 
-            <!-- Selector entre Lista de Objetivos (25 Oct) y Acuerdos -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
                 <button type="button" class="element-btn-card ${this.activeTab === 'goals' ? 'sun' : ''}" data-tab="goals">
                     <span class="card-label">🎯 PINKY PROMISE</span>
@@ -151,7 +182,6 @@ export class AgreementsView extends HTMLElement {
 
     renderGoalsTab(doneGoals, pctGoals) {
         return `
-            <!-- Barra de Progreso de Objetivos -->
             <div class="glass-card" style="margin-bottom:14px;text-align:left;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:0.76rem;font-weight:800;color:var(--accent-sunflower);">
@@ -164,7 +194,6 @@ export class AgreementsView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Formulario para añadir nuevo objetivo actualizable -->
             <div class="stage-card" style="margin-top:0;margin-bottom:14px;border-color:var(--border-gold);">
                 <h3 style="color:var(--accent-sunflower);font-size:0.96rem;margin-bottom:8px;">➕ Agregar nuevo objetivo a nuestra lista</h3>
                 <div style="display:flex;flex-direction:column;gap:8px;">
@@ -187,7 +216,6 @@ export class AgreementsView extends HTMLElement {
                 </div>
             </div>
 
-            <!-- Checklist interactiva de Objetivos -->
             <div style="display:flex;flex-direction:column;gap:10px;">
                 ${this.goals.map((g, idx) => `
                     <div class="stage-card" style="margin-top:0;padding:14px;border-color:${g.done ? 'var(--border-green)' : 'var(--border-subtle)'};">

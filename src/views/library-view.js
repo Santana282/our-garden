@@ -16,6 +16,39 @@ export const LIBRARY_CATEGORIES = [
 
 export const INITIAL_BOOKS = [
     {
+        id: 'book-menu-4-meses',
+        title: 'Menú de Degustación: Nuestros Primeros 4 Meses (22 Jul – 22 Nov)',
+        author: 'Kevin Santana (Para mi Chef favorita, Analy Monserrat)',
+        category: 'Cartas de amor',
+        coverEmoji: '🍷',
+        coverGradient: 'linear-gradient(135deg, #9f1239, #3b0764)',
+        license: 'Edición Especial de 4° Mesiversario',
+        description: 'Un recorrido gastronómico y enológico en 4 tiempos por cada mes que hemos construido juntos desde el 22 de julio.',
+        recommendedBy: 'kevin',
+        favorite: true,
+        progress: 0,
+        bookmarkChapter: 0,
+        notes: [],
+        chapters: [
+            {
+                title: '1° Tiempo (Julio - Agosto) • El Origen y el Entrelazamiento',
+                body: `Empezamos el 22 de julio descubriendo que dos almas a distancia pueden latir en el mismo presente.\n\nComo en la ecuación de Dirac que te entregué aquel día, interactuar contigo transformó mi mundo por completo. Gracias por aceptar caminar conmigo en las buenas y en las pruebas, enseñándome que soy solo para ti y que contigo puedo abrir mi corazón sin miedo.`
+            },
+            {
+                title: '2° Tiempo (Septiembre) • Flores Amarillas y Doble Festejo',
+                body: `Entre líneas de Python el 21 de septiembre para que no te faltaran tus flores amarillas, y el doble festejo del 22 de septiembre por tu cumpleaños y nuestro segundo mes ("Mi Ponanita preciosa"), me enseñaste que el amor no es un proyecto universitario, sino abrazarnos con palabras cálidas, olor a pancito recién hecho y elegirnos cada noche.`
+            },
+            {
+                title: '3° Tiempo (Octubre) • Cosecha de Orizaba (Maridaje con Cabernet Sauvignon y Merlot)',
+                body: `El mes en que abrimos juntos nuestra cuenta en Revolut, descubrimos tu pasión por la Enología y vivimos nuestro primer fin de semana juntos del 23 al 27 de octubre.\n\nDesde verte sentada esperándome en el ADO de Orizaba a las 10:01 PM, nuestro primer beso, tus masajitos, nuestro domingo de novios con frapecito y la despedida de Nacho y Pimpon, hasta tu cobijita doblada bajo mi sudadera. Me encantas en cuerpo y alma.`
+            },
+            {
+                title: '4° Tiempo (Noviembre y Nuestro Horizonte) • Pinky Promise',
+                body: `Cuatro meses construyendo nuestro jardín vivo y viendo nuestras fotos sincronizadas en el Diario.\n\nBrindo con una copa de tu vino favorito por nuestra lista de objetivos, por la taquiza navideña con tu familia, por el día en que dejemos atrás las colegiaturas para armar nuestro hogar de clima fresco y por todo lo que vamos a cocinar y vivir juntos. ¡Felices 4 meses, Mi Reina hermosa!`
+            }
+        ]
+    },
+    {
         id: 'book-becquer',
         title: 'Rimas Selectas del Amor y la Luz',
         author: 'Gustavo Adolfo Bécquer',
@@ -134,11 +167,26 @@ export const INITIAL_BOOKS = [
     }
 ];
 
+function ensureLibrarySeeds(savedBooks) {
+    if (!Array.isArray(savedBooks) || savedBooks.length === 0) return INITIAL_BOOKS;
+    const map = new Map();
+    savedBooks.forEach(b => { if (b && b.id) map.set(b.id, b); });
+    INITIAL_BOOKS.forEach(seed => {
+        if (!map.has(seed.id)) {
+            map.set(seed.id, seed);
+        }
+    });
+    // Garantizar que el libro de los 4 meses aparezca en primer lugar
+    const list = Array.from(map.values());
+    list.sort((a, b) => (a.id === 'book-menu-4-meses' ? -1 : b.id === 'book-menu-4-meses' ? 1 : 0));
+    return list;
+}
+
 export class LibraryView extends HTMLElement {
     constructor() {
         super();
         const saved = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
-        this.books = saved.books || INITIAL_BOOKS;
+        this.books = ensureLibrarySeeds(saved.books);
         this.readingHistory = saved.readingHistory || [];
         this.selectedCategory = 'Todas';
         this.activeBookId = null;
@@ -151,8 +199,8 @@ export class LibraryView extends HTMLElement {
 
         this.boundRemotePull = () => {
             const refreshed = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
-            if (refreshed.books && JSON.stringify(refreshed.books) !== JSON.stringify(this.books)) {
-                this.books = refreshed.books;
+            if (refreshed.books) {
+                this.books = ensureLibrarySeeds(refreshed.books);
                 this.render();
                 this.bindEvents();
             }
@@ -160,10 +208,10 @@ export class LibraryView extends HTMLElement {
     }
 
     connectedCallback() {
+        this.saveLibrary();
         this.render();
         this.bindEvents();
         window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
-        syncEngine.pullFromCloud();
     }
 
     disconnectedCallback() {
@@ -201,7 +249,7 @@ export class LibraryView extends HTMLElement {
                 <div>
                     <span class="card-label" style="margin-bottom:2px;">🕯️ ESTANTERÍA NOCTURNA</span>
                     <div style="font-size:0.84rem;color:var(--accent-sunflower-soft);font-weight:700;">
-                        ${this.books.length} obras disponibles • ${this.books.filter(b => b.favorite).length} favoritas
+                        ${this.books.length} obras disponibles • Incluye nuestro Menú de 4 Meses 🍷
                     </div>
                 </div>
                 <button type="button" class="pill-action-btn" id="btn-toggle-upload-book">
@@ -248,7 +296,7 @@ export class LibraryView extends HTMLElement {
 
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
                 ${filtered.map(book => `
-                    <article class="stage-card" style="margin-top:0;display:flex;gap:12px;align-items:stretch;">
+                    <article class="stage-card" style="margin-top:0;display:flex;gap:12px;align-items:stretch;border-color:${book.id === 'book-menu-4-meses' ? 'var(--border-gold)' : 'var(--border-subtle)'};">
                         <div style="width:78px;flex-shrink:0;background:${book.coverGradient || 'linear-gradient(135deg,#f59e0b,#78350f)'};border-radius:12px;border:1px solid rgba(255,255,255,0.28);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,0.6);">
                             <div style="font-size:2.1rem;">${book.coverEmoji || '📖'}</div>
                             <span style="font-size:0.62rem;font-weight:800;color:#fff;margin-top:6px;line-height:1.2;">${book.category}</span>
@@ -319,7 +367,7 @@ export class LibraryView extends HTMLElement {
                         <button type="button" class="loc-chip ${this.readerTheme === 'sepia' ? 'active' : ''}" data-rtheme="sepia">📜 Sepia</button>
                     </div>
                     <button type="button" class="loc-chip active" id="btn-bookmark-chap">
-                        🔖 Cap. ${this.activeChapterIndex + 1}
+                        🔖 Cap. ${this.activeChapterIndex + 1}/${chapters.length}
                     </button>
                 </div>
 
