@@ -12,6 +12,7 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Flores Amarillas', 'Código', 'Detalle'],
         highlighted: true,
         sharedWithPartner: true,
+        privateOnly: false,
         photoUrl: '',
         audioUrl: ''
     },
@@ -26,6 +27,7 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Gastronomía', 'Enología', 'Revolut'],
         highlighted: true,
         sharedWithPartner: true,
+        privateOnly: false,
         photoUrl: '',
         audioUrl: ''
     },
@@ -40,6 +42,7 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Orizaba', 'Primer Encuentro', 'Cobijita'],
         highlighted: true,
         sharedWithPartner: true,
+        privateOnly: false,
         photoUrl: '',
         audioUrl: ''
     },
@@ -54,6 +57,7 @@ const INITIAL_DIARY_ENTRIES = [
         tags: ['Reflexión', 'Confianza'],
         highlighted: true,
         sharedWithPartner: true,
+        privateOnly: false,
         photoUrl: '',
         audioUrl: ''
     }
@@ -69,10 +73,14 @@ export class DiaryView extends HTMLElement {
         this.pendingPhotoUrl = '';
         this.pendingAudioUrl = '';
         this.uploadStatus = '';
+
         this.boundRemotePull = () => {
-            this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
-            this.render();
-            this.bindEvents();
+            const updated = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
+            if (JSON.stringify(updated) !== JSON.stringify(this.entries)) {
+                this.entries = updated;
+                this.render();
+                this.bindEvents();
+            }
         };
     }
 
@@ -80,26 +88,34 @@ export class DiaryView extends HTMLElement {
         this.render();
         this.bindEvents();
         window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+        // Descargar automáticamente las últimas notas y fotos al abrir la vista del Diario
+        syncEngine.pullFromCloud();
     }
 
     disconnectedCallback() {
         window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
-    saveEntries() {
+    async saveEntries() {
         localStorage.setItem('our_garden_diary_v1', JSON.stringify(this.entries));
-        syncEngine.syncNow();
+        await syncEngine.syncNow();
     }
 
     getVisibleEntries() {
         return this.entries.filter(e => {
             if (this.filterDate && e.date !== this.filterDate) return false;
-            if (this.activeSpace === 'shared') return e.space === 'shared' || e.sharedWithPartner;
+            // Si una nota fue marcada explícitamente como solo privada, solo su autor la ve
+            if (e.privateOnly === true && e.author !== this.activeUser) return false;
+
+            // En "Nuestro Diario" aparecen todas las entradas compartidas de ambos
+            if (this.activeSpace === 'shared') {
+                return e.privateOnly !== true;
+            }
             if (this.activeSpace === 'kevin') {
-                return e.space === 'kevin' && (this.activeUser === 'kevin' || e.sharedWithPartner);
+                return e.author === 'kevin' || e.space === 'kevin';
             }
             if (this.activeSpace === 'analy') {
-                return e.space === 'analy' && (this.activeUser === 'analy' || e.sharedWithPartner);
+                return e.author === 'analy' || e.space === 'analy';
             }
             return true;
         });
@@ -112,10 +128,11 @@ export class DiaryView extends HTMLElement {
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📖 Nuestros Diarios e Historia</h1>
                 <p class="hero-subtitle">
-                    Tres espacios sincronizados con soporte para fotografías y notas de voz en la nube.
+                    Tres espacios sincronizados con fotografías optimizadas y notas de voz en tiempo real.
                 </p>
             </section>
 
+            <!-- Barra Superior: Autor, Botón de Sincronización Directa y Filtro -->
             <div class="glass-card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;text-align:left;">
                 <div>
                     <span class="card-label">👤 ESCRIBIENDO COMO:</span>
@@ -124,77 +141,87 @@ export class DiaryView extends HTMLElement {
                         <button type="button" class="loc-chip ${this.activeUser === 'analy' ? 'active' : ''}" data-author="analy">👩🏻‍🍳 Analy</button>
                     </div>
                 </div>
-                <div>
-                    <span class="card-label">📅 BUSCAR POR FECHA:</span>
-                    <div style="display:flex;gap:4px;margin-top:4px;">
-                        <input type="date" id="diary-date-filter" value="${this.filterDate}" style="background:#060a17;border:1px solid var(--border-subtle);padding:4px 8px;border-radius:8px;font-size:0.76rem;">
-                        ${this.filterDate ? `<button type="button" class="loc-chip" id="clear-date-filter">Ver todas</button>` : ''}
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                    <button type="button" class="pill-action-btn" id="btn-refresh-diary" style="padding:5px 11px;font-size:0.75rem;">
+                        🔄 Actualizar notas y fotos ahora
+                    </button>
+                    <div style="display:flex;gap:4px;">
+                        <input type="date" id="diary-date-filter" value="${this.filterDate}" style="background:#060a17;border:1px solid var(--border-subtle);padding:4px 8px;border-radius:8px;font-size:0.74rem;">
+                        ${this.filterDate ? `<button type="button" class="loc-chip" id="clear-date-filter">Todas</button>` : ''}
                     </div>
                 </div>
             </div>
 
+            <!-- Pestañas de los 3 Espacios -->
             <div class="cards-grid-3" style="margin-bottom:14px;">
                 <button type="button" class="element-btn-card ${this.activeSpace === 'kevin' ? 'water' : ''}" data-space="kevin">
                     <span class="card-label">💻 ESPACIO 1</span>
-                    <div class="card-value" style="font-size:0.84rem;">Mi Diario (Kevin)</div>
+                    <div class="card-value" style="font-size:0.84rem;">Notas de Kevin</div>
                 </button>
                 <button type="button" class="element-btn-card ${this.activeSpace === 'analy' ? 'sun' : ''}" data-space="analy">
                     <span class="card-label">👩🏻‍🍳 ESPACIO 2</span>
-                    <div class="card-value" style="font-size:0.84rem;">Su Diario (Analy)</div>
+                    <div class="card-value" style="font-size:0.84rem;">Notas de Analy</div>
                 </button>
                 <button type="button" class="element-btn-card ${this.activeSpace === 'shared' ? 'earth' : ''}" data-space="shared">
                     <span class="card-label">🌻 ESPACIO 3</span>
-                    <div class="card-value" style="font-size:0.84rem;">Nuestro Diario</div>
+                    <div class="card-value" style="font-size:0.84rem;">Todo Nuestro Diario</div>
                 </button>
             </div>
 
-            <!-- Formulario con subida de Fotos y Audios a Supabase Storage -->
+            <!-- Formulario para Nueva Nota o Foto -->
             <div class="stage-card" style="margin-bottom:16px;">
                 <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:10px;">
-                    ✍️ Nueva entrada en ${this.activeSpace === 'shared' ? 'Nuestro Diario Compartido' : (this.activeSpace === 'kevin' ? 'el Diario de Kevin' : 'el Diario de Analy')}
+                    ✍️ Subir nueva nota o foto como ${this.activeUser === 'kevin' ? '💻 Kevin' : '👩🏻‍🍳 Analy'}
                 </h3>
                 <div style="display:flex;flex-direction:column;gap:8px;">
-                    <input type="text" id="entry-title" placeholder="Título del recuerdo o reflexión..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.86rem;">
-                    <textarea id="entry-content" rows="3" placeholder="Escribe aquí tu entrada..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.85rem;"></textarea>
+                    <input type="text" id="entry-title" placeholder="Título del recuerdo o nota..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.86rem;">
+                    <textarea id="entry-content" rows="3" placeholder="Escribe aquí tu nota (o solo adjunta una foto abajo)..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px 12px;border-radius:10px;font-size:0.85rem;"></textarea>
                     
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:8px;">
-                            📷 Subir Fotografía
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:9px;">
+                            📷 Adjuntar Fotografía
                             <input type="file" id="inp-diary-photo" accept="image/*" style="display:none;">
                         </label>
-                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:8px;">
-                            🎙️ Subir Audio / Voz
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:9px;">
+                            🎙️ Adjuntar Audio / Voz
                             <input type="file" id="inp-diary-audio" accept="audio/*" style="display:none;">
                         </label>
                     </div>
 
-                    ${this.uploadStatus ? `
-                        <div style="font-size:0.76rem;color:var(--accent-emerald);padding:4px 6px;">${this.uploadStatus}</div>
+                    ${this.pendingPhotoUrl ? `
+                        <div style="margin-top:4px;text-align:center;">
+                            <img src="${this.pendingPhotoUrl}" alt="Vista previa" style="max-height:160px;border-radius:10px;border:1px solid var(--border-gold);">
+                        </div>
                     ` : ''}
 
-                    <input type="text" id="entry-tags" placeholder="Etiquetas separadas por coma (ej. Orizaba, Vinos, Cita)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.8rem;">
+                    ${this.uploadStatus ? `
+                        <div style="font-size:0.78rem;color:var(--accent-emerald);padding:4px 6px;text-align:center;">${this.uploadStatus}</div>
+                    ` : ''}
+
+                    <input type="text" id="entry-tags" placeholder="Etiquetas separadas por coma (ej. Orizaba, Vinos, Foto)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:10px;font-size:0.8rem;">
 
                     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                        <label style="font-size:0.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;">
-                            <input type="checkbox" id="entry-share-chk" ${this.activeSpace === 'shared' ? 'checked disabled' : ''}>
-                            <span>Compartir esta entrada con mi pareja</span>
+                        <label style="font-size:0.78rem;color:var(--accent-emerald);display:flex;align-items:center;gap:6px;cursor:pointer;">
+                            <input type="checkbox" id="entry-share-chk" checked>
+                            <span>🔓 Compartir con mi pareja (visible en ambos teléfonos)</span>
                         </label>
-                        <button type="button" class="pill-action-btn" id="btn-save-entry">📖 Guardar y Sincronizar</button>
+                        <button type="button" class="pill-action-btn" id="btn-save-entry">📖 Publicar y Sincronizar</button>
                     </div>
                 </div>
             </div>
 
+            <!-- Lista Cronológica de Entradas -->
             <div style="display:flex;flex-direction:column;gap:12px;">
                 ${list.length === 0 ? `
                     <div class="glass-card" style="padding:24px;color:var(--text-secondary);">
-                        No hay entradas visibles en este espacio o fecha seleccionada.
+                        No hay entradas en este filtro. Toca "🔄 Actualizar notas y fotos ahora" arriba.
                     </div>
                 ` : list.map(item => `
                     <article class="stage-card" style="margin-top:0;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                             <div>
                                 <span style="font-size:0.72rem;color:var(--accent-sky);font-weight:700;">
-                                    📅 ${item.date} • ${item.time || ''} • Por ${item.author === 'kevin' ? '💻 Kevin' : '👩🏻‍🍳 Analy'}
+                                    📅 ${item.date} • ${item.time || ''} • Subido por ${item.author === 'analy' ? '👩🏻‍🍳 Analy' : '💻 Kevin'}
                                 </span>
                                 <h3 style="color:var(--accent-sunflower-soft);font-size:1.02rem;margin:4px 0 8px;">
                                     ${item.highlighted ? '⭐ ' : ''}${item.title}
@@ -208,7 +235,7 @@ export class DiaryView extends HTMLElement {
                         
                         ${item.photoUrl ? `
                             <div style="margin-bottom:10px;">
-                                <img src="${item.photoUrl}" alt="${item.title}" loading="lazy" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid var(--border-gold);">
+                                <img src="${item.photoUrl}" alt="${item.title}" loading="lazy" style="width:100%;max-height:380px;object-fit:contain;background:#04060e;border-radius:12px;border:1px solid var(--border-gold);">
                             </div>
                         ` : ''}
 
@@ -222,9 +249,9 @@ export class DiaryView extends HTMLElement {
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 ${(item.tags || []).map(t => `<span class="loc-chip" style="font-size:0.68rem;">#${t}</span>`).join('')}
                             </div>
-                            ${item.author === this.activeUser && item.space !== 'shared' ? `
-                                <button type="button" class="loc-chip ${item.sharedWithPartner ? 'active' : ''}" data-toggle-share="${item.id}">
-                                    ${item.sharedWithPartner ? '🔓 Compartida con pareja' : '🔒 Privada (Toca para compartir)'}
+                            ${item.author === this.activeUser ? `
+                                <button type="button" class="loc-chip ${item.privateOnly ? '' : 'active'}" data-toggle-share="${item.id}">
+                                    ${item.privateOnly ? '🔒 Solo para mí (Toca para compartir)' : '🔓 Visible para ambos'}
                                 </button>
                             ` : ''}
                         </div>
@@ -242,6 +269,18 @@ export class DiaryView extends HTMLElement {
                 this.render();
                 this.bindEvents();
             });
+        });
+
+        this.querySelector('#btn-refresh-diary')?.addEventListener('click', async () => {
+            this.uploadStatus = '⏳ Sincronizando notas y fotos con el teléfono de tu pareja...';
+            this.render();
+            this.bindEvents();
+            await syncEngine.pullFromCloud();
+            await syncEngine.syncNow();
+            this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || INITIAL_DIARY_ENTRIES;
+            this.uploadStatus = `🟢 ¡Diario actualizado a las ${new Date().toLocaleTimeString('es-MX')}!`;
+            this.render();
+            this.bindEvents();
         });
 
         this.querySelectorAll('[data-space]').forEach(btn => {
@@ -267,48 +306,67 @@ export class DiaryView extends HTMLElement {
         this.querySelector('#inp-diary-photo')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            this.uploadStatus = '⏳ Subiendo fotografía a nuestra bóveda en Supabase...';
+            const currentTitle = this.querySelector('#entry-title')?.value || '';
+            const currentContent = this.querySelector('#entry-content')?.value || '';
+
+            this.uploadStatus = '⏳ Optimizando y subiendo fotografía...';
             this.render();
             this.bindEvents();
+
             const res = await syncEngine.uploadMediaFile(file, 'photos');
             if (res.ok) {
                 this.pendingPhotoUrl = res.url;
-                this.uploadStatus = `✅ Fotografía "${res.name}" lista para guardar en la entrada.`;
+                this.uploadStatus = `✅ Fotografía lista. Ahora toca "📖 Publicar y Sincronizar".`;
             } else {
                 this.uploadStatus = `⚠️ ${res.message}`;
             }
             this.render();
             this.bindEvents();
+            if (this.querySelector('#entry-title')) this.querySelector('#entry-title').value = currentTitle;
+            if (this.querySelector('#entry-content')) this.querySelector('#entry-content').value = currentContent;
         });
 
         this.querySelector('#inp-diary-audio')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            this.uploadStatus = '⏳ Subiendo nota de voz a nuestra bóveda en Supabase...';
+            const currentTitle = this.querySelector('#entry-title')?.value || '';
+            const currentContent = this.querySelector('#entry-content')?.value || '';
+
+            this.uploadStatus = '⏳ Subiendo nota de voz...';
             this.render();
             this.bindEvents();
+
             const res = await syncEngine.uploadMediaFile(file, 'audios');
             if (res.ok) {
                 this.pendingAudioUrl = res.url;
-                this.uploadStatus = `✅ Audio "${res.name}" listo para guardar en la entrada.`;
+                this.uploadStatus = `✅ Audio "${res.name}" listo. Toca "📖 Publicar y Sincronizar".`;
             } else {
                 this.uploadStatus = `⚠️ ${res.message}`;
             }
             this.render();
             this.bindEvents();
+            if (this.querySelector('#entry-title')) this.querySelector('#entry-title').value = currentTitle;
+            if (this.querySelector('#entry-content')) this.querySelector('#entry-content').value = currentContent;
         });
 
-        this.querySelector('#btn-save-entry')?.addEventListener('click', () => {
-            const title = this.querySelector('#entry-title')?.value.trim();
-            const content = this.querySelector('#entry-content')?.value.trim();
+        this.querySelector('#btn-save-entry')?.addEventListener('click', async () => {
+            let title = this.querySelector('#entry-title')?.value.trim();
+            let content = this.querySelector('#entry-content')?.value.trim();
             const tagsRaw = this.querySelector('#entry-tags')?.value.trim();
             const shareChk = this.querySelector('#entry-share-chk')?.checked;
 
-            if (!title || !content) return;
+            // Permitir que suban una foto rápida aunque no hayan escrito título o texto largo
+            if (!title && !content && !this.pendingPhotoUrl && !this.pendingAudioUrl) return;
+            if (!title) {
+                title = this.pendingPhotoUrl ? '📸 Fotografía compartida' : '💌 Nota del día';
+            }
+            if (!content) {
+                content = `Recuerdo compartido por ${this.activeUser === 'analy' ? 'Analy 👩🏻‍🍳' : 'Kevin 💻'}.`;
+            }
 
             const now = new Date();
             const newEntry = {
-                id: 'entry-' + Date.now(),
+                id: 'entry-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
                 space: this.activeSpace,
                 author: this.activeUser,
                 date: now.toISOString().split('T')[0],
@@ -316,8 +374,9 @@ export class DiaryView extends HTMLElement {
                 title,
                 content,
                 tags: tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : ['Recuerdo'],
-                highlighted: false,
-                sharedWithPartner: this.activeSpace === 'shared' ? true : Boolean(shareChk),
+                highlighted: Boolean(this.pendingPhotoUrl),
+                sharedWithPartner: Boolean(shareChk),
+                privateOnly: !shareChk,
                 photoUrl: this.pendingPhotoUrl || '',
                 audioUrl: this.pendingAudioUrl || ''
             };
@@ -325,29 +384,36 @@ export class DiaryView extends HTMLElement {
             this.entries.unshift(newEntry);
             this.pendingPhotoUrl = '';
             this.pendingAudioUrl = '';
-            this.uploadStatus = '';
-            this.saveEntries();
+            this.uploadStatus = '⏳ Guardando y enviando al teléfono de tu pareja...';
+            this.render();
+            this.bindEvents();
+
+            await this.saveEntries();
+            this.entries = JSON.parse(localStorage.getItem('our_garden_diary_v1')) || this.entries;
+            this.uploadStatus = '🟢 ¡Publicado y sincronizado en ambos teléfonos!';
             this.render();
             this.bindEvents();
         });
 
         this.querySelectorAll('[data-delete-entry]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const id = btn.dataset.deleteEntry;
+                syncEngine.registerDeletedId(id);
                 this.entries = this.entries.filter(e => e.id !== id);
-                this.saveEntries();
+                await this.saveEntries();
                 this.render();
                 this.bindEvents();
             });
         });
 
         this.querySelectorAll('[data-toggle-share]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const id = btn.dataset.toggleShare;
                 const entry = this.entries.find(e => e.id === id);
                 if (entry && entry.author === this.activeUser) {
-                    entry.sharedWithPartner = !entry.sharedWithPartner;
-                    this.saveEntries();
+                    entry.privateOnly = !entry.privateOnly;
+                    entry.sharedWithPartner = !entry.privateOnly;
+                    await this.saveEntries();
                     this.render();
                     this.bindEvents();
                 }

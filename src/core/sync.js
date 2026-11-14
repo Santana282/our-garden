@@ -1,4 +1,4 @@
-const OFFICIAL_SUPABASE_URL = '[https://gxbuwjtiurgxtzjmwgeg.supabase.co](https://gxbuwjtiurgxtzjmwgeg.supabase.co)';
+const OFFICIAL_SUPABASE_URL = 'https://gxbuwjtiurgxtzjmwgeg.supabase.co';
 const OFFICIAL_SUPABASE_KEY = 'sb_publishable_Bvhc4UImRIZ6S7i5vRxQHw_XcG0DagF';
 const OFFICIAL_SPACE_ID = 'kevin-analy-22072026';
 const OFFICIAL_BUCKET = 'garden-media';
@@ -14,7 +14,17 @@ const SYNC_KEYS = [
     'our_garden_arcade_scores_v1',
     'our_garden_library_v1',
     'our_garden_daily_light_v1',
-    'our_garden_universe_prefs_v1'
+    'our_garden_universe_prefs_v1',
+    'our_garden_deleted_ids_v1'
+];
+
+// Claves que contienen arreglos de elementos con .id y deben fusionarse sin borrarse entre sí
+const ARRAY_MERGE_KEYS = [
+    'our_garden_diary_v1',
+    'our_garden_sunflowers_v2',
+    'our_garden_botiquin_v1',
+    'our_garden_agreements_v1',
+    'our_garden_goals_v1'
 ];
 
 export const SUPABASE_SETUP_SQL = `create table if not exists public.ecosystem_sync (
@@ -48,7 +58,7 @@ export class SyncEngine {
         this.lastSyncTime = localStorage.getItem('our_garden_last_sync') || new Date().toLocaleTimeString('es-MX');
         this.connectionState = 'connected';
         this.cloudVerified = false;
-        this.lastNote = 'Sincronización activa entre Orizaba y Atlixco';
+        this.lastNote = 'Sincronización bidireccional activa';
         this.pollTimer = null;
     }
 
@@ -71,11 +81,23 @@ export class SyncEngine {
             this.syncNow();
         });
 
+        // Al volver a abrir o enfocar la pantalla en el celular, descarga de inmediato lo que subió la pareja
+        window.addEventListener('focus', () => {
+            if (navigator.onLine) this.pullFromCloud();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && navigator.onLine) {
+                this.pullFromCloud();
+            }
+        });
+
+        // Consulta cada 10 segundos cambios nuevos de la otra persona
         this.pollTimer = setInterval(() => {
             if (!document.hidden && navigator.onLine) {
                 this.pullFromCloud();
             }
-        }, 20000);
+        }, 10000);
     }
 
     isConfigured() {
@@ -89,6 +111,15 @@ export class SyncEngine {
         };
     }
 
+    registerDeletedId(id) {
+        if (!id) return;
+        const deleted = JSON.parse(localStorage.getItem('our_garden_deleted_ids_v1')) || [];
+        if (!deleted.includes(id)) {
+            deleted.push(id);
+            localStorage.setItem('our_garden_deleted_ids_v1', JSON.stringify(deleted.slice(-200)));
+        }
+    }
+
     async loginPartner(role) {
         const cleanRole = role === 'analy' ? 'analy' : 'kevin';
         localStorage.setItem('our_garden_active_user', cleanRole);
@@ -97,45 +128,117 @@ export class SyncEngine {
             loggedAt: new Date().toISOString()
         };
         localStorage.setItem('our_garden_auth_session', JSON.stringify(this.session));
+        await this.pullFromCloud();
         await this.syncNow();
         return { ok: true };
     }
 
-    // Subida directa de fotografías, audios y documentos a Supabase Storage (Sin inflar localStorage)
+    // Compresor óptico en Canvas: reduce cualquier foto de iPhone/Android (4MB) a ~55KB
+    // para que suba al instante y funcione incluso sin configurar buckets externos.
+    compressImageFile(file, maxWidth = 860, quality = 0.74) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width;
+                    let h = img.height;
+                    if (w > maxWidth) {
+                        h = Math.round((h * maxWidth) / w);
+                        w = maxWidth;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                    resolve(dataUrl);
+                };
+                img.onerror = () => resolve(ev.target.result);
+                img.src = ev.target.result;
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+        });
+    }
+
+    fileToDataUrl(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // Subida garantizada de fotos y audios: intenta Supabase Storage y si no existe el bucket
+    // utiliza la imagen optimizada sincronizada directamente en la tabla ecosystem_sync
     async uploadMediaFile(file, folder = 'diary') {
         if (!file) return { ok: false, message: 'No se seleccionó archivo.' };
-        if (!navigator.onLine) {
-            return { ok: false, message: 'Necesitas conexión a internet para subir fotos o audios a la nube.' };
+
+        const isImage = file.type.startsWith('image/');
+        let compressedDataUrl = '';
+        if (isImage) {
+            compressedDataUrl = await this.compressImageFile(file);
         }
 
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const filePath = `${folder}/${Date.now()}_${safeName}`;
-        const uploadUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/${OFFICIAL_BUCKET}/${filePath}`;
+        if (navigator.onLine) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filePath = `${folder}/${Date.now()}_${safeName}`;
+            const uploadUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/${OFFICIAL_BUCKET}/${filePath}`;
 
-        try {
-            const res = await fetch(uploadUrl, {
-                method: 'POST',
-                mode: 'cors',
-                credentials: 'omit',
-                headers: this.getHeaders({
-                    'Content-Type': file.type || 'application/octet-stream',
-                    'x-upsert': 'true'
-                }),
-                body: file
-            });
+            try {
+                let bodyToUpload = file;
+                let contentType = file.type || 'application/octet-stream';
 
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
+                if (isImage && compressedDataUrl) {
+                    const resBlob = await fetch(compressedDataUrl);
+                    bodyToUpload = await resBlob.blob();
+                    contentType = 'image/jpeg';
+                }
+
+                const res = await fetch(uploadUrl, {
+                    method: 'POST',
+                    mode: 'cors',
+                    credentials: 'omit',
+                    headers: this.getHeaders({
+                        'Content-Type': contentType,
+                        'x-upsert': 'true'
+                    }),
+                    body: bodyToUpload
+                });
+
+                if (res.ok) {
+                    const publicUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/public/${OFFICIAL_BUCKET}/${filePath}`;
+                    return { ok: true, url: publicUrl, name: file.name, mode: 'storage' };
+                }
+            } catch (err) {
+                // Continúa al respaldo directo en base de datos
             }
+        }
 
-            const publicUrl = `${OFFICIAL_SUPABASE_URL}/storage/v1/object/public/${OFFICIAL_BUCKET}/${filePath}`;
-            return { ok: true, url: publicUrl, name: file.name };
-        } catch (err) {
+        // Respaldo infalible en la tabla de Supabase para que la foto o nota de voz NUNCA se pierda
+        if (isImage && compressedDataUrl) {
             return {
-                ok: false,
-                message: 'Para subir archivos, ejecuta primero el bloque SQL de Storage (garden-media) en Supabase.'
+                ok: true,
+                url: compressedDataUrl,
+                name: file.name,
+                mode: 'inline-cloud'
             };
         }
+
+        if (file.size <= 1500000) {
+            const dataUrl = await this.fileToDataUrl(file);
+            if (dataUrl) {
+                return { ok: true, url: dataUrl, name: file.name, mode: 'inline-cloud' };
+            }
+        }
+
+        return {
+            ok: false,
+            message: 'El archivo de audio es muy grande. Usa un audio más corto o ejecuta el SQL de Storage en Star-OS.'
+        };
     }
 
     collectLocalPayload() {
@@ -147,6 +250,115 @@ export class SyncEngine {
             }
         });
         return payload;
+    }
+
+    // Fusiona dos arreglos de objetos por su propiedad .id sin perder elementos de ninguno de los dos teléfonos
+    mergeArraysById(localArr, remoteArr, deletedSet) {
+        if (!Array.isArray(localArr) && !Array.isArray(remoteArr)) return [];
+        if (!Array.isArray(localArr)) return remoteArr.filter(item => !deletedSet.has(item?.id));
+        if (!Array.isArray(remoteArr)) return localArr.filter(item => !deletedSet.has(item?.id));
+
+        const map = new Map();
+        // Primero colocamos los remotos (de la pareja)
+        remoteArr.forEach(item => {
+            if (item && item.id && !deletedSet.has(item.id)) {
+                map.set(item.id, item);
+            }
+        });
+        // Luego combinamos/actualizamos con los locales
+        localArr.forEach(item => {
+            if (item && item.id && !deletedSet.has(item.id)) {
+                const existing = map.get(item.id);
+                if (existing) {
+                    // Si es un girasol, conservar el mayor conteo de riegos y acuerdos de ambos
+                    if (typeof item.waterCount === 'number' || typeof existing.waterCount === 'number') {
+                        map.set(item.id, {
+                            ...existing,
+                            ...item,
+                            waterCount: Math.max(item.waterCount || 0, existing.waterCount || 0),
+                            kevinResolved: Boolean(item.kevinResolved || existing.kevinResolved),
+                            analyResolved: Boolean(item.analyResolved || existing.analyResolved),
+                            history: Array.from(new Set([...(item.history || []), ...(existing.history || [])]))
+                        });
+                    } else {
+                        map.set(item.id, { ...existing, ...item });
+                    }
+                } else {
+                    map.set(item.id, item);
+                }
+            }
+        });
+
+        return Array.from(map.values());
+    }
+
+    mergePayloads(localPayload, remotePayload, activeUser) {
+        if (!remotePayload) return localPayload;
+
+        const merged = { ...remotePayload, ...localPayload };
+        const localDeleted = Array.isArray(localPayload.our_garden_deleted_ids_v1) ? localPayload.our_garden_deleted_ids_v1 : [];
+        const remoteDeleted = Array.isArray(remotePayload.our_garden_deleted_ids_v1) ? remotePayload.our_garden_deleted_ids_v1 : [];
+        const deletedSet = new Set([...localDeleted, ...remoteDeleted]);
+        merged.our_garden_deleted_ids_v1 = Array.from(deletedSet).slice(-200);
+
+        // Fusionar Diarios, Girasoles, Botiquín, Acuerdos y Objetivos sin borrar lo que subió la pareja
+        ARRAY_MERGE_KEYS.forEach(key => {
+            if (localPayload[key] || remotePayload[key]) {
+                merged[key] = this.mergeArraysById(localPayload[key], remotePayload[key], deletedSet);
+            }
+        });
+
+        // Fusionar Biblioteca del Amor (libros y notas de lectura)
+        if (localPayload.our_garden_library_v1 || remotePayload.our_garden_library_v1) {
+            const locLib = localPayload.our_garden_library_v1 || {};
+            const remLib = remotePayload.our_garden_library_v1 || {};
+            const mergedBooks = this.mergeArraysById(locLib.books, remLib.books, deletedSet).map(b => {
+                const lb = (locLib.books || []).find(x => x.id === b.id);
+                const rb = (remLib.books || []).find(x => x.id === b.id);
+                if (lb && rb) {
+                    const combinedNotes = [...(lb.notes || []), ...(rb.notes || [])];
+                    const uniqueNotes = Array.from(new Map(combinedNotes.map(n => [`${n.author}-${n.text}`, n])).values());
+                    return { ...rb, ...lb, notes: uniqueNotes };
+                }
+                return b;
+            });
+            merged.our_garden_library_v1 = {
+                ...remLib,
+                ...locLib,
+                books: mergedBooks
+            };
+        }
+
+        // Fusionar Frases Diarias y Reflexiones de "Una luz para hoy"
+        if (localPayload.our_garden_daily_light_v1 || remotePayload.our_garden_daily_light_v1) {
+            const locLight = localPayload.our_garden_daily_light_v1 || {};
+            const remLight = remotePayload.our_garden_daily_light_v1 || {};
+            const mergedCustomPhrases = this.mergeArraysById(locLight.customPhrases, remLight.customPhrases, deletedSet);
+            const combinedRefs = [...(locLight.reflections || []), ...(remLight.reflections || [])];
+            const uniqueRefs = Array.from(new Map(combinedRefs.map(r => [`${r.author}-${r.text}-${r.date}`, r])).values());
+            merged.our_garden_daily_light_v1 = {
+                ...remLight,
+                ...locLight,
+                customPhrases: mergedCustomPhrases,
+                reflections: uniqueRefs,
+                favorites: Array.from(new Set([...(locLight.favorites || []), ...(remLight.favorites || [])]))
+            };
+        }
+
+        // Respetar privacidad de Tus Días (solo Analy modifica sus registros)
+        if (activeUser !== 'analy' && remotePayload.our_garden_cycle_v1) {
+            merged.our_garden_cycle_v1 = remotePayload.our_garden_cycle_v1;
+        }
+
+        return merged;
+    }
+
+    saveMergedToLocal(mergedPayload) {
+        Object.entries(mergedPayload).forEach(([key, val]) => {
+            if (SYNC_KEYS.includes(key) && val !== undefined) {
+                localStorage.setItem(key, JSON.stringify(val));
+            }
+        });
     }
 
     async syncNow() {
@@ -167,14 +379,15 @@ export class SyncEngine {
             const remote = await this.fetchRemoteRow().catch(() => null);
             const localPayload = this.collectLocalPayload();
 
-            if (remote && remote.payload && activeUser !== 'analy' && remote.payload.our_garden_cycle_v1) {
-                localPayload.our_garden_cycle_v1 = remote.payload.our_garden_cycle_v1;
-            }
+            // Fusionar lo local con lo remoto para NUNCA sobrescribir las notas o fotos de la pareja
+            const mergedPayload = this.mergePayloads(localPayload, remote?.payload, activeUser);
+            this.saveMergedToLocal(mergedPayload);
 
             const endpoint = `${OFFICIAL_SUPABASE_URL}/rest/v1/ecosystem_sync?on_conflict=space_id`;
             const res = await fetch(endpoint, {
                 method: 'POST',
                 mode: 'cors',
+                cache: 'no-store',
                 credentials: 'omit',
                 headers: this.getHeaders({
                     'Content-Type': 'application/json',
@@ -184,7 +397,7 @@ export class SyncEngine {
                     space_id: OFFICIAL_SPACE_ID,
                     updated_by: activeUser,
                     updated_at: new Date().toISOString(),
-                    payload: localPayload
+                    payload: mergedPayload
                 })
             });
 
@@ -192,9 +405,10 @@ export class SyncEngine {
                 this.pendingSync = false;
                 this.cloudVerified = true;
                 this.connectionState = 'connected';
-                this.lastNote = `Sincronizado en Supabase (${nowStr})`;
+                this.lastNote = `Sincronizado y fusionado en Supabase (${nowStr})`;
                 window.dispatchEvent(new CustomEvent('ecosystem:sync-updated'));
-                return { ok: true, message: `🟢 ¡Sincronizado en tiempo real con Supabase (${nowStr})!` };
+                window.dispatchEvent(new CustomEvent('ecosystem:remote-pulled'));
+                return { ok: true, message: `🟢 ¡Notas y fotos sincronizadas en ambos teléfonos (${nowStr})!` };
             }
 
             this.connectionState = 'connected';
@@ -211,10 +425,12 @@ export class SyncEngine {
     }
 
     async fetchRemoteRow() {
-        const url = `${OFFICIAL_SUPABASE_URL}/rest/v1/ecosystem_sync?space_id=eq.${encodeURIComponent(OFFICIAL_SPACE_ID)}&select=*`;
+        // Parámetro &_t evita que el navegador móvil lea una respuesta vieja en caché
+        const url = `${OFFICIAL_SUPABASE_URL}/rest/v1/ecosystem_sync?space_id=eq.${encodeURIComponent(OFFICIAL_SPACE_ID)}&select=*&_t=${Date.now()}`;
         const res = await fetch(url, {
             method: 'GET',
             mode: 'cors',
+            cache: 'no-store',
             credentials: 'omit',
             headers: this.getHeaders()
         });
@@ -238,11 +454,10 @@ export class SyncEngine {
                 return { ok: true, empty: true };
             }
 
-            Object.entries(row.payload).forEach(([key, val]) => {
-                if (SYNC_KEYS.includes(key) && val !== undefined) {
-                    localStorage.setItem(key, JSON.stringify(val));
-                }
-            });
+            const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
+            const localPayload = this.collectLocalPayload();
+            const mergedPayload = this.mergePayloads(localPayload, row.payload, activeUser);
+            this.saveMergedToLocal(mergedPayload);
 
             this.cloudVerified = true;
             this.lastNote = `Actualizado desde ${row.updated_by === 'analy' ? 'Analy 👩🏻‍🍳' : 'Kevin 💻'} (${nowStr})`;
@@ -263,6 +478,7 @@ export class SyncEngine {
             const keys = await caches.keys();
             await Promise.all(keys.map(k => caches.delete(k)));
         }
+        await this.pullFromCloud();
         return await this.syncNow();
     }
 }

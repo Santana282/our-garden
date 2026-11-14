@@ -1,5 +1,4 @@
 import { syncEngine } from '../core/sync.js';
-import { mediaStorage } from '../core/media-storage.js';
 
 export const LIBRARY_CATEGORIES = [
     'Todas',
@@ -140,7 +139,6 @@ export class LibraryView extends HTMLElement {
         super();
         const saved = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
         this.books = saved.books || INITIAL_BOOKS;
-        this.customCategories = saved.customCategories || [];
         this.readingHistory = saved.readingHistory || [];
         this.selectedCategory = 'Todas';
         this.activeBookId = null;
@@ -149,15 +147,15 @@ export class LibraryView extends HTMLElement {
         this.readerTheme = saved.readerTheme || 'night';
         this.showUploadForm = false;
         this.pendingCloudFileUrl = '';
-        this.pendingCloudFileFormat = '';
         this.uploadStatusText = '';
 
         this.boundRemotePull = () => {
             const refreshed = JSON.parse(localStorage.getItem('our_garden_library_v1')) || {};
-            if (refreshed.books) this.books = refreshed.books;
-            if (refreshed.customCategories) this.customCategories = refreshed.customCategories;
-            this.render();
-            this.bindEvents();
+            if (refreshed.books && JSON.stringify(refreshed.books) !== JSON.stringify(this.books)) {
+                this.books = refreshed.books;
+                this.render();
+                this.bindEvents();
+            }
         };
     }
 
@@ -165,25 +163,21 @@ export class LibraryView extends HTMLElement {
         this.render();
         this.bindEvents();
         window.addEventListener('ecosystem:remote-pulled', this.boundRemotePull);
+        syncEngine.pullFromCloud();
     }
 
     disconnectedCallback() {
         window.removeEventListener('ecosystem:remote-pulled', this.boundRemotePull);
     }
 
-    getAllCategories() {
-        return [...new Set([...LIBRARY_CATEGORIES, ...(this.customCategories || [])])];
-    }
-
-    saveLibrary() {
+    async saveLibrary() {
         localStorage.setItem('our_garden_library_v1', JSON.stringify({
             books: this.books,
-            customCategories: this.customCategories,
             readingHistory: this.readingHistory,
             readerFontSize: this.readerFontSize,
             readerTheme: this.readerTheme
         }));
-        syncEngine.syncNow();
+        await syncEngine.syncNow();
     }
 
     getFilteredBooks() {
@@ -194,13 +188,12 @@ export class LibraryView extends HTMLElement {
     render() {
         const filtered = this.getFilteredBooks();
         const activeBook = this.books.find(b => b.id === this.activeBookId);
-        const allCategories = this.getAllCategories();
 
         this.innerHTML = `
             <section class="hero-section" style="padding-bottom:8px;">
                 <h1 class="hero-title" style="font-size:1.75rem;">📚 Biblioteca del Amor</h1>
                 <p class="hero-subtitle">
-                    Nuestra estantería nocturna de poesía, cartas, filosofía y documentos privados en la nube.
+                    Nuestra estantería nocturna de poesía, cartas, filosofía y obras compartidas para leer juntos.
                 </p>
             </section>
 
@@ -212,53 +205,47 @@ export class LibraryView extends HTMLElement {
                     </div>
                 </div>
                 <button type="button" class="pill-action-btn" id="btn-toggle-upload-book">
-                    ➕ Subir Libro / Poema / PDF
+                    ➕ Adjuntar Libro / Poema / Foto
                 </button>
             </div>
 
-            <!-- Panel de subida con soporte para Supabase Storage -->
             <div class="stage-card" id="upload-book-panel" style="display:${this.showUploadForm ? 'block' : 'none'};margin-top:0;margin-bottom:14px;border-color:var(--border-gold);">
-                <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:8px;">📎 Subir Obra, Poema, PDF, EPUB o Fotografía de Página</h3>
-                <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:10px;">
-                    Los documentos y fotos de páginas se guardan en nuestra bóveda privada de Supabase Storage conservando la atribución de autoría.
-                </p>
+                <h3 style="color:var(--accent-sunflower);font-size:0.98rem;margin-bottom:8px;">📎 Adjuntar Obra, Poema o Fotografía de Página</h3>
                 <div style="display:flex;flex-direction:column;gap:8px;">
-                    <input type="text" id="up-book-title" placeholder="Título del libro, poema o escrito" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
+                    <input type="text" id="up-book-title" placeholder="Título del libro o poema" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <input type="text" id="up-book-author" placeholder="Autor(a) y atribución" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
+                        <input type="text" id="up-book-author" placeholder="Autor(a)" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
                         <select id="up-book-cat" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.82rem;">
-                            ${allCategories.filter(c => c !== 'Todas').map(c => `<option value="${c}">${c}</option>`).join('')}
+                            ${LIBRARY_CATEGORIES.filter(c => c !== 'Todas').map(c => `<option value="${c}">${c}</option>`).join('')}
                         </select>
                     </div>
-                    <input type="text" id="up-book-desc" placeholder="Breve descripción o por qué nos gusta esta obra" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
-                    <textarea id="up-book-body" rows="4" placeholder="Escribe o pega el texto/poema aquí, o sube un archivo abajo..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;"></textarea>
-
+                    <input type="text" id="up-book-desc" placeholder="Breve descripción o dedicatoria" style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;">
+                    <textarea id="up-book-body" rows="4" placeholder="Escribe o pega aquí el poema/capítulo, o sube una foto/archivo abajo..." style="background:#060a17;border:1px solid var(--border-subtle);padding:9px;border-radius:10px;font-size:0.84rem;"></textarea>
+                    
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;">
-                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:9px;">
-                            ☁️ Subir Archivo (.pdf, .epub, .txt, foto de página)
+                        <label class="loc-chip active" style="cursor:pointer;text-align:center;padding:8px;">
+                            📄 Subir archivo (.txt, foto de página, .pdf)
                             <input type="file" id="up-book-file" accept=".txt,.md,.pdf,.epub,image/*" style="display:none;">
                         </label>
-                        <input type="url" id="up-book-url" value="${this.pendingCloudFileUrl}" placeholder="O enlace legal externo (PDF/Web)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px;border-radius:10px;font-size:0.8rem;">
+                        <input type="url" id="up-book-url" value="${this.pendingCloudFileUrl}" placeholder="O enlace externo (opcional)" style="background:#060a17;border:1px solid var(--border-subtle);padding:8px;border-radius:10px;font-size:0.8rem;">
                     </div>
-                    <div id="up-file-status" style="font-size:0.78rem;color:var(--accent-emerald);">${this.uploadStatusText}</div>
+                    <div id="up-file-status" style="font-size:0.76rem;color:var(--accent-emerald);">${this.uploadStatusText}</div>
 
                     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
                         <button type="button" class="loc-chip" id="btn-cancel-upload-book">Cancelar</button>
-                        <button type="button" class="pill-action-btn" id="btn-save-upload-book">📚 Guardar en la Biblioteca</button>
+                        <button type="button" class="pill-action-btn" id="btn-save-upload-book">📚 Guardar y Sincronizar</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Carrusel de Categorías -->
             <div class="location-bar" style="display:flex;margin-bottom:14px;padding-bottom:6px;">
-                ${allCategories.map(cat => `
+                ${LIBRARY_CATEGORIES.map(cat => `
                     <button type="button" class="loc-chip ${this.selectedCategory === cat ? 'active' : ''}" data-lib-cat="${cat}">
                         ${cat}
                     </button>
                 `).join('')}
             </div>
 
-            <!-- Estantería de Libros -->
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
                 ${filtered.map(book => `
                     <article class="stage-card" style="margin-top:0;display:flex;gap:12px;align-items:stretch;">
@@ -281,7 +268,7 @@ export class LibraryView extends HTMLElement {
 
                             <div>
                                 <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-secondary);margin-bottom:6px;">
-                                    <span>Progreso: ${book.progress || 0}%</span>
+                                    <span>Notas: ${(book.notes || []).length}</span>
                                     <span>💖 Rec. por ${book.recommendedBy === 'analy' ? 'Analy' : 'Kevin'}</span>
                                 </div>
                                 <div style="display:flex;gap:6px;">
@@ -298,7 +285,6 @@ export class LibraryView extends HTMLElement {
                 `).join('')}
             </div>
 
-            <!-- Modal Lector Móvil -->
             <div class="eco-modal-backdrop ${activeBook ? 'open' : ''}" id="library-reader-modal">
                 ${activeBook ? this.renderReaderModal(activeBook) : ''}
             </div>
@@ -308,12 +294,11 @@ export class LibraryView extends HTMLElement {
     renderReaderModal(book) {
         const chapters = book.chapters || [{ title: 'Texto Completo', body: '' }];
         const currentChap = chapters[this.activeChapterIndex] || chapters[0];
-        const isPageImage = book.externalUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(book.externalUrl);
+        const isImageAttachment = book.externalUrl && (book.externalUrl.startsWith('data:image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(book.externalUrl));
 
         const themeStyles = {
             night: 'background:#070b18;color:#f8fafc;border:1px solid rgba(251,191,36,0.35);',
-            sepia: 'background:#292014;color:#fef3c7;border:1px solid #d97706;',
-            soft: 'background:#1e293b;color:#e2e8f0;border:1px solid #38bdf8;'
+            sepia: 'background:#292014;color:#fef3c7;border:1px solid #d97706;'
         };
 
         return `
@@ -334,7 +319,7 @@ export class LibraryView extends HTMLElement {
                         <button type="button" class="loc-chip ${this.readerTheme === 'sepia' ? 'active' : ''}" data-rtheme="sepia">📜 Sepia</button>
                     </div>
                     <button type="button" class="loc-chip active" id="btn-bookmark-chap">
-                        🔖 Marcar página (Cap. ${this.activeChapterIndex + 1})
+                        🔖 Cap. ${this.activeChapterIndex + 1}
                     </button>
                 </div>
 
@@ -351,17 +336,14 @@ export class LibraryView extends HTMLElement {
                 <div style="padding:14px 12px;border-radius:12px;background:rgba(0,0,0,0.25);margin-bottom:14px;">
                     <h4 style="color:var(--accent-sunflower-soft);margin-bottom:10px;font-size:1rem;">${currentChap.title}</h4>
                     <div style="font-size:${this.readerFontSize}rem;line-height:1.85;white-space:pre-line;font-family:Georgia, 'Times New Roman', serif;">${currentChap.body}</div>
-
-                    ${isPageImage ? `
+                    ${isImageAttachment ? `
                         <div style="margin-top:12px;">
-                            <img src="${book.externalUrl}" alt="Página de ${book.title}" style="max-width:100%;border-radius:10px;border:1px solid var(--border-subtle);">
+                            <img src="${book.externalUrl}" alt="${book.title}" style="width:100%;border-radius:10px;border:1px solid var(--border-gold);">
                         </div>
-                    ` : ''}
-
-                    ${book.externalUrl ? `
+                    ` : book.externalUrl ? `
                         <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.12);">
                             <a href="${book.externalUrl}" target="_blank" rel="noopener" class="pill-action-btn" style="text-decoration:none;display:inline-flex;">
-                                🔗 Abrir Archivo Completo (${book.fileFormat || 'PDF / EPUB / Imagen'})
+                                🔗 Abrir Documento Adjunto
                             </a>
                         </div>
                     ` : ''}
@@ -369,13 +351,12 @@ export class LibraryView extends HTMLElement {
 
                 <div style="margin-bottom:10px;">
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
-                        <input type="text" id="inp-book-note" placeholder="Agregar nota personal o pensamiento sobre esta obra..." style="flex:1;background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:8px;font-size:0.8rem;color:#fff;">
+                        <input type="text" id="inp-book-note" placeholder="Agregar nota personal para que la lea mi pareja..." style="flex:1;background:#060a17;border:1px solid var(--border-subtle);padding:8px 10px;border-radius:8px;font-size:0.8rem;color:#fff;">
                         <button type="button" class="pill-action-btn" id="btn-add-book-note" style="padding:6px 12px;font-size:0.76rem;">📝 Guardar Nota</button>
-                        <button type="button" class="loc-chip" id="btn-share-excerpt" title="Copiar fragmento con atribución">📲 Citar</button>
                     </div>
                     ${(book.notes || []).length > 0 ? `
                         <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:8px;font-size:0.78rem;">
-                            <strong style="color:var(--accent-rose);">💭 Nuestras notas en este libro:</strong>
+                            <strong style="color:var(--accent-rose);">💭 Nuestras notas compartidas en este libro:</strong>
                             ${book.notes.map(n => `<div style="margin-top:4px;">• <strong>${n.author}:</strong> ${n.text}</div>`).join('')}
                         </div>
                     ` : ''}
@@ -404,74 +385,68 @@ export class LibraryView extends HTMLElement {
             const file = e.target.files?.[0];
             if (!file) return;
             const ext = file.name.split('.').pop().toLowerCase();
-            this.pendingCloudFileFormat = ext.toUpperCase();
 
             if (ext === 'txt' || ext === 'md') {
                 const reader = new FileReader();
                 reader.onload = () => {
                     const bodyArea = this.querySelector('#up-book-body');
                     if (bodyArea) bodyArea.value = String(reader.result);
-                    this.uploadStatusText = `✅ Texto extraído de "${file.name}" listo para guardar.`;
                     const statusEl = this.querySelector('#up-file-status');
-                    if (statusEl) statusEl.textContent = this.uploadStatusText;
+                    if (statusEl) statusEl.textContent = `✅ Texto extraído de "${file.name}".`;
                 };
                 reader.readAsText(file);
                 return;
             }
 
-            // Subir PDF, EPUB o fotografía de página a Supabase Storage
-            this.uploadStatusText = `⏳ Subiendo "${file.name}" a la bóveda privada en Supabase...`;
+            this.uploadStatusText = `⏳ Optimizando y subiendo "${file.name}"...`;
             const statusEl = this.querySelector('#up-file-status');
             if (statusEl) statusEl.textContent = this.uploadStatusText;
 
-            const res = await mediaStorage.uploadFile(file, 'library-docs', file.name);
+            const res = await syncEngine.uploadMediaFile(file, 'library');
             if (res.ok) {
                 this.pendingCloudFileUrl = res.url;
-                const urlInp = this.querySelector('#up-book-url');
-                if (urlInp) urlInp.value = res.url;
-                this.uploadStatusText = `✅ Archivo "${file.name}" (${res.sizeKB} KB) subido a Supabase Storage.`;
+                this.uploadStatusText = `✅ Archivo "${file.name}" listo para guardar.`;
             } else {
-                this.uploadStatusText = `⚠️ Para subir PDFs/Imágenes a la nube, ejecuta el SQL de Bóveda Multimedia en Supabase (Paso 4 de la guía).`;
+                this.uploadStatusText = `⚠️ ${res.message}`;
             }
             if (statusEl) statusEl.textContent = this.uploadStatusText;
         });
 
-        this.querySelector('#btn-save-upload-book')?.addEventListener('click', () => {
-            const title = this.querySelector('#up-book-title')?.value.trim();
-            const author = this.querySelector('#up-book-author')?.value.trim() || 'Autoría compartida';
+        this.querySelector('#btn-save-upload-book')?.addEventListener('click', async () => {
+            const title = this.querySelector('#up-book-title')?.value.trim() || 'Obra compartida';
+            const author = this.querySelector('#up-book-author')?.value.trim() || 'Kevin & Analy';
             const category = this.querySelector('#up-book-cat')?.value || 'Escritos personales';
             const description = this.querySelector('#up-book-desc')?.value.trim() || 'Obra adjuntada a nuestra Biblioteca del Amor.';
             const body = this.querySelector('#up-book-body')?.value.trim();
-            const externalUrl = this.querySelector('#up-book-url')?.value.trim() || this.pendingCloudFileUrl || '';
+            const externalUrl = this.pendingCloudFileUrl || this.querySelector('#up-book-url')?.value.trim() || '';
 
-            if (!title || (!body && !externalUrl)) return;
+            if (!body && !externalUrl) return;
             const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
 
             this.books.unshift({
-                id: 'book-' + Date.now(),
+                id: 'book-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
                 title,
                 author,
                 category,
                 coverEmoji: '📘',
                 coverGradient: 'linear-gradient(135deg, #4338ca, #0f172a)',
-                license: 'Adjuntado con autorización por ' + (activeUser === 'kevin' ? 'Kevin' : 'Analy'),
+                license: 'Subido por ' + (activeUser === 'analy' ? 'Analy' : 'Kevin'),
                 description,
                 recommendedBy: activeUser,
                 favorite: true,
                 progress: 0,
                 bookmarkChapter: 0,
                 externalUrl,
-                fileFormat: this.pendingCloudFileFormat || 'Documento',
                 notes: [],
                 chapters: [
-                    { title: 'Capítulo 1', body: body || 'Documento o página fotografiada disponible aquí mismo.' }
+                    { title: 'Capítulo 1', body: body || 'Página o documento adjunto abajo.' }
                 ]
             });
 
             this.showUploadForm = false;
             this.pendingCloudFileUrl = '';
             this.uploadStatusText = '';
-            this.saveLibrary();
+            await this.saveLibrary();
             this.render();
             this.bindEvents();
         });
@@ -485,11 +460,11 @@ export class LibraryView extends HTMLElement {
         });
 
         this.querySelectorAll('[data-fav-book]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const book = this.books.find(b => b.id === btn.dataset.favBook);
                 if (book) {
                     book.favorite = !book.favorite;
-                    this.saveLibrary();
+                    await this.saveLibrary();
                     this.render();
                     this.bindEvents();
                 }
@@ -497,12 +472,12 @@ export class LibraryView extends HTMLElement {
         });
 
         this.querySelectorAll('[data-rec-book]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const book = this.books.find(b => b.id === btn.dataset.recBook);
                 const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
                 if (book) {
                     book.recommendedBy = activeUser;
-                    this.saveLibrary();
+                    await this.saveLibrary();
                     const msg = `📚 *Recomendación en nuestra Biblioteca del Amor* 🌻\n\nMi amor, te recomendé leer *"${book.title}"* de ${book.author} en nuestro jardín: https://santana282.github.io/our-garden/#/biblioteca`;
                     navigator.clipboard?.writeText(msg);
                     this.render();
@@ -512,21 +487,10 @@ export class LibraryView extends HTMLElement {
         });
 
         this.querySelectorAll('[data-open-book]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 this.activeBookId = btn.dataset.openBook;
                 const book = this.books.find(b => b.id === this.activeBookId);
                 this.activeChapterIndex = book?.bookmarkChapter || 0;
-                if (book) {
-                    const total = (book.chapters || []).length || 1;
-                    book.progress = Math.min(100, Math.round(((this.activeChapterIndex + 1) / total) * 100));
-                    this.readingHistory.unshift({
-                        bookId: book.id,
-                        title: book.title,
-                        openedAt: new Date().toLocaleDateString('es-MX')
-                    });
-                    this.readingHistory = this.readingHistory.slice(0, 15);
-                    this.saveLibrary();
-                }
                 this.render();
                 this.bindEvents();
             });
@@ -540,66 +504,58 @@ export class LibraryView extends HTMLElement {
                 this.bindEvents();
             });
 
-            this.querySelector('#btn-font-dec')?.addEventListener('click', () => {
+            this.querySelector('#btn-font-dec')?.addEventListener('click', async () => {
                 this.readerFontSize = Math.max(0.82, +(this.readerFontSize - 0.08).toFixed(2));
-                this.saveLibrary();
+                await this.saveLibrary();
                 this.render();
                 this.bindEvents();
             });
 
-            this.querySelector('#btn-font-inc')?.addEventListener('click', () => {
+            this.querySelector('#btn-font-inc')?.addEventListener('click', async () => {
                 this.readerFontSize = Math.min(1.45, +(this.readerFontSize + 0.08).toFixed(2));
-                this.saveLibrary();
+                await this.saveLibrary();
                 this.render();
                 this.bindEvents();
             });
 
             this.querySelectorAll('[data-rtheme]').forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', async () => {
                     this.readerTheme = btn.dataset.rtheme;
-                    this.saveLibrary();
+                    await this.saveLibrary();
                     this.render();
                     this.bindEvents();
                 });
             });
 
             this.querySelectorAll('[data-chap-idx]').forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', async () => {
                     this.activeChapterIndex = Number(btn.dataset.chapIdx);
-                    const total = (activeBook.chapters || []).length || 1;
-                    activeBook.progress = Math.min(100, Math.round(((this.activeChapterIndex + 1) / total) * 100));
-                    this.saveLibrary();
+                    await this.saveLibrary();
                     this.render();
                     this.bindEvents();
                 });
             });
 
-            this.querySelector('#btn-bookmark-chap')?.addEventListener('click', () => {
+            this.querySelector('#btn-bookmark-chap')?.addEventListener('click', async () => {
                 activeBook.bookmarkChapter = this.activeChapterIndex;
-                this.saveLibrary();
+                await this.saveLibrary();
                 this.render();
                 this.bindEvents();
             });
 
-            this.querySelector('#btn-add-book-note')?.addEventListener('click', () => {
+            this.querySelector('#btn-add-book-note')?.addEventListener('click', async () => {
                 const inp = this.querySelector('#inp-book-note');
                 const val = inp?.value.trim();
                 if (!val) return;
                 const activeUser = localStorage.getItem('our_garden_active_user') || 'kevin';
                 activeBook.notes = activeBook.notes || [];
                 activeBook.notes.unshift({
-                    author: activeUser === 'kevin' ? '💻 Kevin' : '👩🏻‍🍳 Analy',
+                    author: activeUser === 'analy' ? '👩🏻‍🍳 Analy' : '💻 Kevin',
                     text: val
                 });
-                this.saveLibrary();
+                await this.saveLibrary();
                 this.render();
                 this.bindEvents();
-            });
-
-            this.querySelector('#btn-share-excerpt')?.addEventListener('click', () => {
-                const chap = activeBook.chapters[this.activeChapterIndex] || activeBook.chapters[0];
-                const quote = `📖 Fragmento de "${activeBook.title}" (${activeBook.author}):\n\n"${chap.body.slice(0, 220)}..."`;
-                navigator.clipboard?.writeText(quote);
             });
         }
     }
